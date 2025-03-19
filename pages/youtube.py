@@ -6,7 +6,7 @@ import streamlit as st
 
 # Configure page to maintain consistent styling
 st.set_page_config(
-    page_title="YouTube - Hank Marquardt",
+    page_title="YouTube - Earwurmz of Whimsey",
     page_icon="🎵",
     layout="wide",
     initial_sidebar_state="auto",
@@ -69,14 +69,15 @@ def display_youtube_videos(feed):
             st.text(f"Published: {published.strftime('%B %d, %Y')}")
 
             # Display full description
-            description = entry.summary
-            st.text(description)
+            with st.expander('Video Description'):
+                description = entry.summary
+                st.text(description)
 
         st.markdown("---")
 
 
 # Main page content
-st.title("My YouTube Channel")
+st.title("Earwurmz of Whimsey")
 
 channel_feed_url = (
     "https://www.youtube.com/feeds/videos.xml?channel_id=UC_D3lgvy2XWLEZ1Uw4IU9Rg"
@@ -89,5 +90,5 @@ display_youtube_videos(feed)
 
 # Add a link to the YouTube channel
 st.markdown(
-    "[Visit my YouTube channel](https://www.youtube.com/channel/UC_D3lgvy2XWLEZ1Uw4IU9Rg)"
+    "[YouTube Channel](https://www.youtube.com/channel/UC_D3lgvy2XWLEZ1Uw4IU9Rg)"
 )
