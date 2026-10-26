@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block main %}
+<header class="page-head">
+  <p class="eyebrow">Work</p>
+  <h1>A curated list, not a portfolio dump.</h1>
+  <p class="lede">
+    Tools I built because I wanted them, and practices that pay for the tools. I've left out client
+    work I can't discuss in public, and family software that isn't mine to publish.
+  </p>
+</header>
+
+{% for group_key, group_title, group_intro in groups %}
+<section class="section" aria-labelledby="group-{{ group_key }}">
+  <div class="section-head">
+    <h2 id="group-{{ group_key }}">{{ group_title }}</h2>
+  </div>
+  <p class="section-intro">{{ group_intro }}</p>
+  <ul class="entry-list">
+    {% for project in projects_by_group[group_key] %}
+    <li class="entry">
+      <div class="entry-head">
+        <h3><a href="{{ project.url }}" rel="noopener">{{ project.name }}</a></h3>
+        <p class="entry-domain">{{ project.domain }}</p>
+      </div>
+      <p class="entry-summary">{{ project.summary }}</p>
+      {% if project.problem %}
+      <dl class="entry-fields">
+        <dt>Problem</dt>
+        <dd>{{ project.problem }}</dd>
+        <dt>Approach</dt>
+        <dd>{{ project.approach }}</dd>
+        <dt>Outcome</dt>
+        <dd>{{ project.outcome }}</dd>
+      </dl>
+      {% elif project.outcome %}
+      <p class="entry-note">{{ project.outcome }}</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+
+<section class="section" aria-labelledby="work-note">
+  <h2 id="work-note">A note on evidence</h2>
+  <p>
+    These descriptions stick to what each public site can show. There are no invented metrics,
+    testimonials, or outcomes, and no screenshots standing in for work you can visit yourself.
+    Where a project can't verify something, the project says so — that's usually the most
+    interesting part of the design.
+  </p>
+</section>
+{% endblock %}

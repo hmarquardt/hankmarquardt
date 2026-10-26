@@ -1,0 +1,111 @@
+name: Validate and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hankmarquardt-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  WRANGLER_VERSION: "4.153.0"
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.12.17"
+          python-version: "3.13"
+          enable-cache: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Install locked Python dependencies
+        run: uv sync --locked
+
+      - name: Content, build and safety tests
+        run: uv run pytest
+
+      - name: Build the static site
+        run: uv run python -m sitegen build --out dist --commit "$GITHUB_SHA"
+
+      - name: Worker redirect and header tests
+        run: node --test tests/worker.test.mjs
+
+      - name: Validate the Wrangler bundle without deploying
+        run: npx --yes "wrangler@$WRANGLER_VERSION" deploy --dry-run --outdir .wrangler/dry-run
+
+      - name: Record deployment status
+        env:
+          DEPLOY_ENABLED: ${{ vars.CLOUDFLARE_DEPLOY_ENABLED }}
+        run: |
+          if [ "$DEPLOY_ENABLED" = "true" ]; then
+            echo 'Deployment runs for pushes to main after validation.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Deployment is disabled. Set the repository variable `CLOUDFLARE_DEPLOY_ENABLED=true` and the secret `CLOUDFLARE_API_TOKEN` to enable push-to-main releases.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  deploy:
+    # Push-to-main only, and only once the repository has a least-privilege
+    # Cloudflare API token in secrets. A missing credential fails loudly.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      vars.CLOUDFLARE_DEPLOY_ENABLED == 'true'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: b1aa310aa0a1638d72b8b086a21e557c
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.12.17"
+          python-version: "3.13"
+          enable-cache: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Require a repository deployment credential
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo '::error::Missing CLOUDFLARE_API_TOKEN repository secret. Refusing to deploy with a local, rotating Wrangler login.'
+            exit 1
+          fi
+
+      - run: uv sync --locked
+      - run: uv run python -m sitegen build --out dist --commit "$GITHUB_SHA"
+
+      - name: Deploy the validated commit
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes "wrangler@$WRANGLER_VERSION" deploy \
+            --message "GitHub Actions release $GITHUB_SHA (run $GITHUB_RUN_ID)"
+
+      - name: Verify the live revision, headers and redirects
+        run: uv run python scripts/verify_production.py --commit "$GITHUB_SHA"
+
+      - name: Record the verified release
+        run: |
+          echo "Deployed and verified commit $GITHUB_SHA at https://hankmarquardt.com from GitHub Actions run $GITHUB_RUN_ID." >> "$GITHUB_STEP_SUMMARY"

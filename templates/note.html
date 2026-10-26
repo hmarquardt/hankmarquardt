@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block main %}
+<article class="article">
+  <header class="article-head">
+    <p class="eyebrow">Field Note</p>
+    <h1>{{ note.title }}</h1>
+    <p class="article-meta">
+      <time datetime="{{ note.date.isoformat() }}">{{ note.date.strftime('%B %-d, %Y') }}</time>
+      {% if note.tags %}<span class="dot" aria-hidden="true">·</span>{% for tag in note.tags %}<span class="tag">{{ tag }}</span>{% endfor %}{% endif %}
+    </p>
+    <p class="article-deck">{{ note.description }}</p>
+  </header>
+  <div class="prose">
+    {{ note.html | safe }}
+  </div>
+  <footer class="article-foot">
+    <p><a href="/notes/">← All Field Notes</a></p>
+    <p class="muted">If this was useful, <a href="{{ site.contact_email_url }}">tell me what I got wrong</a>.</p>
+  </footer>
+</article>
+{% endblock %}

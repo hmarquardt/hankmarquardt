@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block main %}
+<header class="page-head">
+  <p class="eyebrow">Field Notes</p>
+  <h1>Occasional writing from the workbench.</h1>
+  <p class="lede">
+    Longer pieces about software, AI, and the natural world — written when there's something worth
+    saying, not on a schedule.
+  </p>
+</header>
+
+{% if notes %}
+<section class="section" aria-label="Published Field Notes">
+  <ol class="note-list">
+    {% for note in notes %}
+    <li>
+      <time class="note-date" datetime="{{ note.date.isoformat() }}">{{ note.date.strftime('%B %-d, %Y') }}</time>
+      <a class="note-title" href="{{ note.path }}">{{ note.title }}</a>
+      <p class="note-summary">{{ note.description }}</p>
+      {% if note.tags %}
+      <p class="tag-list" aria-label="Tags">
+        {% for tag in note.tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+      </p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% else %}
+<section class="section" aria-label="Field Notes status">
+  <div class="empty-state">
+    <p class="empty-title">No published notes yet.</p>
+    <p>
+      Two essays are in draft. They stay out of this page, the feed, and the sitemap until they've
+      been reviewed and finished. If you'd like to know when the first one lands,
+      <a href="/notes/feed.xml">the RSS feed</a> is live and empty, which is the honest version of
+      a coming-soon page.
+    </p>
+  </div>
+</section>
+{% endif %}
+
+<section class="section" aria-labelledby="feed-title">
+  <h2 id="feed-title">Subscribe</h2>
+  <p>
+    <a href="/notes/feed.xml">Field Notes RSS</a> — full articles, no tracking pixels. Shorter,
+    more frequent writing lives on <a href="{{ site.substack_url }}" rel="noopener">Substack</a>.
+  </p>
+</section>
+{% endblock %}

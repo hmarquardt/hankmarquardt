@@ -1,2 +1,29 @@
+# Local Python environments and caches
+.venv/
 hm_venv/
 __pycache__/
+.pytest_cache/
+*.pyc
+
+# Build output and Cloudflare local state
+dist/
+.wrangler/
+
+# Machine and editor state
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local configuration and credentials
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+*.pem
+*.key
+credentials*.json
+secrets*.json
+*.log
+

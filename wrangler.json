@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hankmarquardt",
+  "main": "src/worker.mjs",
+  "account_id": "b1aa310aa0a1638d72b8b086a21e557c",
+  "compatibility_date": "2026-10-26",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": true
+  },
+  "routes": [
+    {
+      "pattern": "hankmarquardt.com",
+      "zone_id": "1d02b937540d58cb201c4abcbb7df4d1",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.hankmarquardt.com",
+      "zone_id": "1d02b937540d58cb201c4abcbb7df4d1",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "invocation_logs": false
+    }
+  }
+}

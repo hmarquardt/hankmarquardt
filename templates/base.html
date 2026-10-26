@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="{{ site.language }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page.title }}</title>
+    <meta name="description" content="{{ page.description }}">
+    {% if page.canonical %}
+    <link rel="canonical" href="{{ page.canonical }}">
+    {% endif %}
+    {% if page.noindex %}
+    <meta name="robots" content="noindex, follow">
+    {% endif %}
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f8f4ec" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#15130f" media="(prefers-color-scheme: dark)">
+    <meta property="og:type" content="{{ page.og_type }}">
+    <meta property="og:site_name" content="{{ site.name }}">
+    <meta property="og:title" content="{{ page.title }}">
+    <meta property="og:description" content="{{ page.description }}">
+    <meta property="og:url" content="{{ page.canonical or site.origin }}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ page.title }}">
+    <meta name="twitter:description" content="{{ page.description }}">
+    {% if page.article_time %}
+    <meta property="article:published_time" content="{{ page.article_time }}">
+    {% endif %}
+    <link rel="alternate" type="application/rss+xml" title="Hank Marquardt — Field Notes" href="/notes/feed.xml">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="wordmark" href="/">Hank Marquardt</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            {% for href, label in nav %}
+            <li><a href="{{ href }}"{% if page.path == href %} aria-current="page"{% endif %}>{{ label }}</a></li>
+            {% endfor %}
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      {% block main %}{% endblock %}
+    </main>
+    <footer class="site-footer">
+      <div class="wrap footer-inner">
+        <div class="footer-identity">
+          <p class="footer-mark">Hank Marquardt</p>
+          <p class="footer-line">Still building. Just with better tools.</p>
+        </div>
+        <div class="footer-meta">
+          <p class="footer-links">
+            <a href="{{ site.contact_email_url }}">Email</a>
+            <a href="{{ site.github_url }}" rel="me">GitHub</a>
+            <a href="{{ site.youtube_url }}" rel="me">YouTube</a>
+            <a href="{{ site.substack_url }}" rel="me">Substack</a>
+          </p>
+          <p class="footer-note">No cookies, no tracking scripts, no accounts.</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

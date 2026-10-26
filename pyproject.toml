@@ -1,0 +1,26 @@
+[project]
+name = "hankmarquardt-site"
+version = "1.0.0"
+description = "Static personal site for hankmarquardt.com"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jinja2==3.1.6",
+    "markdown-it-py==4.2.0",
+    "pyyaml==6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+]
+
+# The build is a source tree, not an installed library: `uv run python -m sitegen`.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = ["error"]

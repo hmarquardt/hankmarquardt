@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block main %}
+<header class="page-head">
+  <p class="eyebrow">Elsewhere</p>
+  <h1>Music, writing, and the occasional detour.</h1>
+  <p class="lede">
+    This site is the workshop. These are the places where the output actually lives.
+  </p>
+</header>
+
+<section class="section" aria-labelledby="youtube">
+  <div class="section-head">
+    <h2 id="youtube">Earwurmz of Whimsy</h2>
+    <p class="section-link"><a href="{{ site.youtube_url }}" rel="noopener">YouTube channel</a></p>
+  </div>
+  <p class="section-intro">
+    Original songs and videos made with AI tools in the loop. The catalogue includes a darkly comic
+    outlaw-country ballad about turkey vultures, which tells you most of what you need to know.
+  </p>
+  {% if youtube %}
+  <ul class="link-list">
+    {% for item in youtube.items %}
+    <li>
+      {% if item.published %}<time class="note-date" datetime="{{ item.published.isoformat() }}">{{ item.published.strftime('%b %-d, %Y') }}</time>{% endif %}
+      <a href="{{ item.url }}" rel="noopener">{{ item.title }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">The latest videos aren't listed here right now — the channel link above is always current.</p>
+  {% endif %}
+</section>
+
+<section class="section" aria-labelledby="substack">
+  <div class="section-head">
+    <h2 id="substack">Hank Marquardt on Substack</h2>
+    <p class="section-link"><a href="{{ site.substack_url }}" rel="noopener">Substack</a></p>
+  </div>
+  <p class="section-intro">
+    Shorter, more frequent writing about AI, software, and whatever the projects turn into. Older
+    posts stay where they were published; nothing is moved or rewritten.
+  </p>
+  {% if substack %}
+  <ul class="link-list">
+    {% for item in substack.items %}
+    <li>
+      {% if item.published %}<time class="note-date" datetime="{{ item.published.isoformat() }}">{{ item.published.strftime('%b %-d, %Y') }}</time>{% endif %}
+      <a href="{{ item.url }}" rel="noopener">{{ item.title }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">The latest posts aren't listed here right now — the Substack link above is always current.</p>
+  {% endif %}
+</section>
+
+<section class="section" aria-labelledby="code">
+  <div class="section-head">
+    <h2 id="code">Code</h2>
+    <p class="section-link"><a href="{{ site.github_url }}" rel="me">github.com/hmarquardt</a></p>
+  </div>
+  <p class="section-intro">
+    Repositories for the projects above, plus experiments that haven't earned a page here yet.
+    Anything private stays private.
+  </p>
+</section>
+{% endblock %}

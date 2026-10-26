@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block main %}
+<section class="hero" aria-labelledby="hero-title">
+  <p class="eyebrow">{{ site.name }}</p>
+  <h1 id="hero-title">Still building. Just with better tools.</h1>
+  <p class="lede">
+    I'm an experienced software engineer and an independent builder. My background is in web
+    development and data engineering, and these days I'm deep in AI — professionally and on my own
+    time. The rest of it is software, the natural world, and whatever question turns into a project.
+  </p>
+  <p class="hero-note">
+    Reputation and substance first. Business opportunities second.
+  </p>
+</section>
+
+<section class="section" aria-labelledby="intro-title">
+  <h2 id="intro-title">What this is</h2>
+  <div class="columns">
+    <p>
+      This site is the long version of a résumé: the things I've actually shipped, the questions
+      behind them, and what I learned building them. Some of it is commercial work. Most of it
+      started as an experiment in my own time, and I try to be clear about which is which.
+    </p>
+    <p>
+      I like tools that explain themselves, software that can be handed over, and writing that
+      admits what it doesn't know. When a project can't support a claim, I'd rather publish the
+      uncertainty than a confident-looking number.
+    </p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="work-title">
+  <div class="section-head">
+    <h2 id="work-title">Selected work</h2>
+    <p class="section-link"><a href="/work/">All work</a></p>
+  </div>
+  <ul class="work-list">
+    {% for project in projects %}
+    <li class="work-item">
+      <p class="work-kicker">{{ project.domain }}</p>
+      <h3><a href="{{ project.url }}" rel="noopener">{{ project.name }}</a></h3>
+      <p>{{ project.summary }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="section" aria-labelledby="notes-title">
+  <div class="section-head">
+    <h2 id="notes-title">Recent Field Notes</h2>
+    <p class="section-link"><a href="/notes/">All Field Notes</a></p>
+  </div>
+  {% if notes %}
+  <ol class="note-list">
+    {% for note in notes %}
+    <li>
+      <time class="note-date" datetime="{{ note.date.isoformat() }}">{{ note.date.strftime('%B %-d, %Y') }}</time>
+      <a class="note-title" href="{{ note.path }}">{{ note.title }}</a>
+      <p class="note-summary">{{ note.description }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <div class="empty-state">
+    <p class="empty-title">Nothing published yet.</p>
+    <p>
+      Field Notes is where the longer pieces will go. The first two are still drafts, and they stay
+      drafts until they're finished and true. No placeholder essays, no filler.
+    </p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="section" aria-labelledby="elsewhere-title">
+  <div class="section-head">
+    <h2 id="elsewhere-title">Elsewhere</h2>
+    <p class="section-link"><a href="/elsewhere/">More</a></p>
+  </div>
+  <div class="columns">
+    <div>
+      <h3 class="mini-title"><a href="{{ site.youtube_url }}" rel="noopener">Earwurmz of Whimsy</a></h3>
+      <p>
+        Original songs and videos made with AI tools in the loop, on YouTube.
+        {% if youtube %}Latest: “{{ youtube.items[0].title }}”.{% endif %}
+      </p>
+    </div>
+    <div>
+      <h3 class="mini-title"><a href="{{ site.substack_url }}" rel="noopener">Substack</a></h3>
+      <p>
+        Writing about AI, software, and what the projects turn into.
+        {% if substack %}Latest: “{{ substack.items[0].title }}”.{% endif %}
+      </p>
+    </div>
+  </div>
+</section>
+{% endblock %}

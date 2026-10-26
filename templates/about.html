@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block main %}
+<header class="page-head">
+  <p class="eyebrow">About</p>
+  <h1>Still building, after all this time.</h1>
+  <p class="lede">
+    I'm Hank Marquardt: a software engineer with a background in web development and data
+    engineering, currently deep in AI both professionally and personally.
+  </p>
+</header>
+
+<section class="section" aria-labelledby="background">
+  <h2 id="background">Background</h2>
+  <div class="columns">
+    <p>
+      I came up through web development, spent a long stretch in data engineering, and now work
+      across AI and software. The through-line is the same in all three: make the system
+      understandable to the person who inherits it, including future me.
+    </p>
+    <p>
+      The part of technology I care about is the moment a tool stops being a demo and starts being
+      something a person can rely on — which is usually where the honest engineering, and the honest
+      writing, begins.
+    </p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="interests">
+  <h2 id="interests">Interests</h2>
+  <div class="columns">
+    <p>
+      Outside of work: the outdoors, birds, mushrooms, and long drives on roads that don't
+      necessarily go anywhere. Several of the experiments on this site came directly out of those
+      habits — a sky guide, a road survey tool, a mushroom forecast.
+    </p>
+    <p>
+      I also make music with AI tools in the loop, which turned into
+      <a href="{{ site.youtube_url }}" rel="noopener">Earwurmz of Whimsy</a>. It is not a business,
+      a personal brand, or a productivity system. It's the part of the workshop that makes noise.
+    </p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="how">
+  <h2 id="how">How I work</h2>
+  <ul class="principles">
+    <li>
+      <strong>Evidence before adjectives.</strong> If a project can't show something, it says so.
+      That applies to forecasts, launch schedules, access research, and this page.
+    </li>
+    <li>
+      <strong>Ownership matters.</strong> Code, accounts, and data should be handed over in a state
+      the next person can actually use.
+    </li>
+    <li>
+      <strong>Boring infrastructure, interesting problems.</strong> Static files, semantic HTML, and
+      a small build are usually enough. Complexity should be earned.
+    </li>
+    <li>
+      <strong>Uncertainty is information.</strong> A tool that marks what it doesn't know is more
+      useful than one that hides the gap behind a number.
+    </li>
+  </ul>
+</section>
+
+<section class="section" aria-labelledby="contact">
+  <h2 id="contact">Contact</h2>
+  <p>
+    The best way to reach me is email:
+    <a href="{{ site.contact_email_url }}">{{ site.contact_email }}</a>. Project inquiries are
+    welcome through <a href="https://turkeyvulturesoftware.com/contact" rel="noopener">Turkey Vulture
+    Software</a>. For everything else, <a href="{{ site.github_url }}" rel="me">GitHub</a>,
+    <a href="{{ site.substack_url }}" rel="me">Substack</a>, and
+    <a href="{{ site.youtube_url }}" rel="me">YouTube</a> are where I show up.
+  </p>
+</section>
+
+<section class="section" aria-labelledby="colophon">
+  <h2 id="colophon">Colophon</h2>
+  <p>
+    This is a static site. Python renders Markdown notes and HTML at build time; Cloudflare Workers
+    serves the files. There is no database, no CMS, no client framework, no analytics, and no
+    JavaScript at all. The <a href="/notes/feed.xml">RSS feed</a> is generated from the same note
+    files, and drafts never reach the build.
+  </p>
+</section>
+{% endblock %}
