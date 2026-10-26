@@ -98,6 +98,7 @@ def _page(
     title: str,
     description: str,
     *,
+    nav_section: str | None = None,
     og_type: str = "website",
     canonical: str | None = None,
     article_time: str | None = None,
@@ -105,6 +106,7 @@ def _page(
 ) -> dict[str, object]:
     return {
         "path": path,
+        "nav_section": nav_section or path,
         "title": title,
         "description": description,
         "og_type": og_type,
@@ -327,6 +329,7 @@ def build_site(
             note.path,
             f"{note.title} — {config.SITE_NAME}",
             note.description,
+            nav_section="/notes/",
             og_type="article",
             canonical=note.canonical or local,
             article_time=f"{note.date.isoformat()}T12:00:00Z",

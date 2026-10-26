@@ -37,7 +37,7 @@
         <nav class="site-nav" aria-label="Primary">
           <ul>
             {% for href, label in nav %}
-            <li><a href="{{ href }}"{% if page.path == href %} aria-current="page"{% endif %}>{{ label }}</a></li>
+            <li><a href="{{ href }}"{% if page.nav_section == href %} aria-current="page"{% endif %}>{{ label }}</a></li>
             {% endfor %}
           </ul>
         </nav>

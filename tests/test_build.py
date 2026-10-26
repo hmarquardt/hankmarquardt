@@ -121,6 +121,16 @@ def test_metadata_is_escaped(build) -> None:
     assert "&lt;Toads&gt;" in feed
 
 
+def test_nav_marks_the_current_section(build) -> None:
+    result = build(notes=ALL_NOTES, feeds=DEFAULT_FEEDS)
+    note = (result.out / "notes" / "first-note" / "index.html").read_text(encoding="utf-8")
+    assert '<a href="/notes/" aria-current="page">Field Notes</a>' in note
+    home = (result.out / "index.html").read_text(encoding="utf-8")
+    assert 'aria-current="page"' not in home
+    not_found = (result.out / "404.html").read_text(encoding="utf-8")
+    assert 'aria-current="page"' not in not_found
+
+
 def test_structural_checks_pass(build) -> None:
     result = build(notes=ALL_NOTES, feeds=DEFAULT_FEEDS)
     problems = check_site(
