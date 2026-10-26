@@ -94,6 +94,25 @@ PROJECTS: tuple[Project, ...] = (
         ),
     ),
     Project(
+        slug="hanks-junk-drawer",
+        name="Hank's Junk Drawer",
+        url="https://hmarquardt.github.io/junkdrawer/",
+        domain="hmarquardt.github.io/junkdrawer",
+        group="experiments",
+        summary=(
+            "A growing shelf of small browser tools, offbeat experiments, and single-page "
+            "ideas that didn't need their own websites."
+        ),
+        approach=(
+            "Mostly self-contained HTML, CSS, and JavaScript hosted directly on GitHub Pages, "
+            "with a lightweight index for finding each experiment."
+        ),
+        outcome=(
+            "Browse the collection on GitHub Pages. The standalone pages can evolve "
+            "independently without a separate application server."
+        ),
+    ),
+    Project(
         slug="worth-looking-up",
         name="Worth Looking Up",
         url="https://worthlookingup.com/",
