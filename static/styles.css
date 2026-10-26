@@ -138,6 +138,8 @@ hr {
 }
 
 .skip-link:focus {
+  transform: none;
+}
 
 /* Header and footer */
 
@@ -301,9 +303,6 @@ hr {
   margin-bottom: 0.75rem;
 }
 
-  transform: none;
-}
-
 .wrap {
   width: min(100% - 2.5rem, 68rem);
   margin-inline: auto;
@@ -311,6 +310,7 @@ hr {
 
 main.wrap {
   padding-block: clamp(2rem, 5vw, 3.5rem) clamp(3rem, 7vw, 5.5rem);
+}
 
 /* Sections and lists */
 
@@ -903,6 +903,4 @@ main.wrap {
   .article {
     max-width: none;
   }
-}
-
 }
