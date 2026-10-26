@@ -121,20 +121,22 @@ redirect to the apex, and `http` is upgraded to `https`. `/youtube`, `/substack`
   security headers, canonical URLs, the 404 page, www/http/legacy redirects and the
   absence of every draft slug.
 
-Unattended deployment is gated by the repository variable
-`CLOUDFLARE_DEPLOY_ENABLED`. Until it is `true` **and** the secret exists, pushes to
-`main` validate and stop; the workflow summary says so explicitly. To enable:
+Unattended deployment is controlled by the repository variable
+`CLOUDFLARE_DEPLOY_ENABLED` and the repository secret `CLOUDFLARE_API_TOKEN`.
+Both are configured as of 2026-10-26, and a `workflow_dispatch` release has been
+deployed and verified through this pipeline.
 
 ```sh
-gh secret set CLOUDFLARE_API_TOKEN      # paste a scoped, account-owned token
+gh secret set CLOUDFLARE_API_TOKEN    # rotate: paste a scoped, account-owned token
 gh variable set CLOUDFLARE_DEPLOY_ENABLED --body true
+gh variable set CLOUDFLARE_DEPLOY_ENABLED --body false   # pause releases
 ```
 
-The token needs exactly: Workers Scripts:Edit, Workers Routes:Edit, Account
-Settings:Read, Zone:Read, SSL and Certificates:Edit for `hankmarquardt.com`. It is
-never committed, printed, or used by the browser. A local Wrangler OAuth login may be
-used to bootstrap the Worker once; it must not be copied into GitHub, because it is a
-rotating personal credential.
+The token needs exactly: Workers Scripts:Edit, Workers Routes:Edit,
+Account Settings:Read, Zone:Read, and SSL and Certificates:Edit for
+`hankmarquardt.com`. It is never committed, printed, or used by the browser. A local
+Wrangler OAuth login was used once to bootstrap the Worker and its custom domains;
+it is a rotating personal credential and must not be copied into GitHub.
 
 Manual verification at any time:
 
