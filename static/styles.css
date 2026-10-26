@@ -856,6 +856,16 @@ main.wrap {
     margin-bottom: 0.7rem;
   }
 
+  .link-list li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+  }
+
+  .link-list .note-date {
+    min-width: 0;
+  }
+
   .footer-meta {
     width: 100%;
   }
