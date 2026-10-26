@@ -33,7 +33,7 @@ No global npm install is needed.
 ```sh
 uv sync --locked                    # create .venv from uv.lock
 uv run python -m sitegen build      # render dist/ and run structural checks
-uv run pytest                       # 89 content, build, feed and safety tests
+uv run pytest                       # content, build, feed and safety suites
 node --test tests/worker.test.mjs   # Worker redirect and header tests
 ```
 

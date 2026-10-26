@@ -32,13 +32,15 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-OPENER = urllib.request.build_opener(NoRedirect)
+OPENER = urllib.request.build_opener(
+    NoRedirect, urllib.request.HTTPSHandler(context=ssl.create_default_context())
+)
 
 
 def fetch(url: str, *, method: str = "GET") -> tuple[int, dict[str, str], str]:
     request = urllib.request.Request(url, method=method, headers=HEADERS)
     try:
-        with OPENER.open(request, timeout=TIMEOUT, context=ssl.create_default_context()) as response:
+        with OPENER.open(request, timeout=TIMEOUT) as response:
             body = response.read(512_000).decode("utf-8", "replace") if method != "HEAD" else ""
             return response.status, {k.lower(): v for k, v in response.headers.items()}, body
     except urllib.error.HTTPError as error:
@@ -55,6 +57,7 @@ def draft_slugs(content_dir: Path) -> list[str]:
         text = "\n" + path.read_text(encoding="utf-8").replace("\r\n", "\n")
         if "\nstatus: draft" in text:
             slugs.append(path.stem)
+    return slugs
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -152,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         if status != 404:
             failures.append(f"draft note {slug!r} is reachable in production ({status})")
 
-    source, _, _ = fetch(f"{site}/")
+    _, _, source = fetch(f"{site}/")
     for slug in slugs:
         if slug in source:
             failures.append(f"draft slug {slug!r} appears on the homepage")
