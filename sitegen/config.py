@@ -22,8 +22,8 @@ SITE_LANGUAGE = "en"
 GITHUB_URL = "https://github.com/hmarquardt"
 YOUTUBE_CHANNEL_URL = "https://www.youtube.com/channel/UC_D3lgvy2XWLEZ1Uw4IU9Rg"
 SUBSTACK_URL = "https://hankmarquardt.substack.com"
-CONTACT_EMAIL = "hank@aismallbizguru.com"
-CONTACT_EMAIL_URL = "mailto:hank@aismallbizguru.com"
+CONTACT_EMAIL = "hmarquardt@gmail.com"
+CONTACT_EMAIL_URL = "mailto:hmarquardt@gmail.com"
 
 ROOT = Path(__file__).resolve().parent.parent
 CONTENT_DIR = ROOT / "content"
