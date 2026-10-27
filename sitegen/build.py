@@ -130,6 +130,7 @@ def _render(environment: Environment, template: str, page: dict[str, object], **
     }
     rendered = environment.get_template(template).render(
         site=_site_context(), page=page, nav=config.NAV,
+        analytics={"script_url": config.ANALYTICS_SCRIPT_URL, "site_id": config.ANALYTICS_SITE_ID},
         person_jsonld=json.dumps(person, ensure_ascii=True).replace("<", "\\u003c"), **context
     )
     if not rendered.endswith("\n"):

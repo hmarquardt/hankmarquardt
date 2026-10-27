@@ -7,8 +7,9 @@ Earwurmz of Whimsy and Substack.
 - Hosting: Cloudflare Workers Static Assets (one small Worker for canonical host
   redirects and security headers)
 - Build: Python 3.13 + uv + Jinja2 + markdown-it-py + PyYAML
-- Runtime: no database, no CMS, no framework, no npm runtime dependencies, no client
-  JavaScript, no analytics
+- Runtime: no database, no CMS, no framework, no npm runtime dependencies, and exactly
+  one client-side script (first-party CFLab Analytics, see
+  [docs/ANALYTICS.md](docs/ANALYTICS.md)); everything else is static HTML and CSS
 - Deploy: push to `main` → GitHub Actions validates, builds, deploys, verifies the live
   revision
 
@@ -179,12 +180,20 @@ Three independent levers, in order of preference:
 
 ## Security and privacy
 
-- Static output only. No cookies, no localStorage, no analytics, no third-party
-  scripts, no inline event handlers, no `<script>` tags at all.
-- CSP `default-src 'none'; style-src 'self'; img-src 'self'; ...; frame-ancestors
-  'none'`, plus HSTS, `X-Content-Type-Options`, `X-Frame-Options: DENY`,
-  `Referrer-Policy`, `Permissions-Policy`, COOP and CORP, attached by the Worker to
-  every response (including redirects and 404s).
+- Static output only, with one approved script and no cookies. No advertising or
+  third-party tracker, no inline event handler, no inline script, and no `<script>`
+  tag other than Person JSON-LD and the CFLab Analytics tag. The allowlist is exact:
+  a second attribute, another origin, a wrong site id, a duplicate tag or any script
+  on the 404 page fails the build, the test suite and the production smoke test.
+- CSP `default-src 'none'; style-src 'self'; img-src 'self'; script-src
+  https://analytics.aismallbizguru.com; connect-src
+  https://analytics.aismallbizguru.com; frame-ancestors 'none'`, plus HSTS,
+  `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`,
+  `Permissions-Policy`, COOP and CORP, attached by the Worker to every response
+  (including redirects and 404s). `script-src` and `connect-src` name that one origin
+  and nothing else: no `'self'`, no `'unsafe-inline'`, no `'unsafe-eval'`, no wildcard
+  and no `http:` origin. Person JSON-LD needs no allowance because it is a data block,
+  not executable script.
 - Content validation: unknown front matter keys, duplicate YAML keys, unsafe URL
   schemes (`javascript:`, `data:`, `vbscript:`), protocol-relative links, credential
   URLs, path traversal and duplicate slugs are refused before rendering.
@@ -192,16 +201,19 @@ Three independent levers, in order of preference:
   production.
 - No secrets exist in this repository. `.env*`, `.dev.vars*`, keys, credentials and
   `dist/` are ignored.
-- **Search performance is measured without touching this site.** CFLab Analytics
-  reads Google Search Console server-to-server for the property
-  `sc-domain:hankmarquardt.com` and stores daily impressions, clicks, CTR and
-  average position. That collection needs no script, cookie, beacon or visitor
-  identifier on these pages, and it is the only measurement this site has.
-- **First-party visitor analytics is intentionally absent, not forgotten.**
-  Adding it would need a `<script>` tag (refused by `sitegen/checks.py`), a
-  `script-src`/`connect-src` CSP change in `src/worker.mjs`, and an exception to
-  the policy above. That is an owner decision about this site's promise, not a
-  build task; the pages stay script-free until the owner decides otherwise.
+- **The one approved script is first-party and cookieless.** CFLab Analytics
+  (`https://analytics.aismallbizguru.com/script.js`, `data-site`
+  `as_LSLKDIyn2pzUxJFLdLjLhj`) records an anonymous pageview: no cookie, no
+  localStorage, no persistent identifier, no fingerprint, no IP address, user agent,
+  query string or precise location stored. Its session id lives in `sessionStorage`
+  and rotates after 30 idle minutes, and Do Not Track and Global Privacy Control are
+  honoured in the script and again by the collector. The collector only accepts a
+  post from an origin registered to this site. Removing the tag in
+  `templates/base.html` ends first-party collection; nothing else depends on it.
+- **Search Console is collected server-to-server and does not depend on the script.**
+  CFLab Analytics reads the property `sc-domain:hankmarquardt.com` and stores daily
+  impressions, clicks, CTR and average position, with or without a beacon on these
+  pages.
 
 ## Migration from the Streamlit app
 

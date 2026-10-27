@@ -7,6 +7,7 @@ from pathlib import Path
 from conftest import DEFAULT_FEEDS, PUBLISHED_NOTE
 
 from sitegen.checks import check_site, resolve_internal
+from sitegen.config import ANALYTICS_SCRIPT_URL, ANALYTICS_SITE_ID
 
 
 def build_ok(build) -> Path:
@@ -39,15 +40,54 @@ def test_broken_internal_link_is_reported(build) -> None:
     assert any("link target does not exist" in problem for problem in check_site(out))
 
 
-def test_script_tag_is_reported(build) -> None:
+ANALYTICS_TAG = f'<script defer src="{ANALYTICS_SCRIPT_URL}" data-site="{ANALYTICS_SITE_ID}"></script>'
+
+
+def _mutate(build, relative: str, change) -> list[str]:
     out = build_ok(build)
-    index = out / "index.html"
-    index.write_text(
-        index.read_text(encoding="utf-8").replace("</body>", "<script>alert(1)</script></body>"),
-        encoding="utf-8",
+    path = out / relative
+    path.write_text(change(path.read_text(encoding="utf-8")), encoding="utf-8")
+    return check_site(out)
+
+
+def test_an_inline_script_is_reported(build) -> None:
+    problems = _mutate(
+        build, "index.html", lambda html: html.replace("</body>", "<script>alert(1)</script></body>")
     )
-    problems = check_site(out)
-    assert any("no client JavaScript" in problem for problem in problems)
+    assert any("unapproved client JavaScript" in problem for problem in problems)
+
+
+def test_a_script_from_another_origin_is_reported(build) -> None:
+    problems = _mutate(
+        build,
+        "index.html",
+        lambda html: html.replace(ANALYTICS_TAG, ANALYTICS_TAG.replace(ANALYTICS_SCRIPT_URL, "https://tracker.example/x.js")),
+    )
+    assert any("unapproved client JavaScript" in problem for problem in problems)
+
+
+def test_the_analytics_tag_with_the_wrong_site_id_is_reported(build) -> None:
+    problems = _mutate(build, "index.html", lambda html: html.replace(ANALYTICS_SITE_ID, "as_AAAAAAAAAAAAAAAAAAAAAA"))
+    assert any("unapproved client JavaScript" in problem for problem in problems)
+    assert any("expected exactly one approved analytics script, found 0" in problem for problem in problems)
+
+
+def test_an_analytics_tag_with_an_extra_attribute_is_reported(build) -> None:
+    problems = _mutate(
+        build, "index.html",
+        lambda html: html.replace(ANALYTICS_TAG, ANALYTICS_TAG.replace(" defer", ' defer nonce="x"')),
+    )
+    assert any("unapproved client JavaScript" in problem for problem in problems)
+
+
+def test_a_duplicate_analytics_tag_is_reported(build) -> None:
+    problems = _mutate(build, "index.html", lambda html: html.replace("</body>", ANALYTICS_TAG + "</body>"))
+    assert any("expected exactly one approved analytics script, found 2" in problem for problem in problems)
+
+
+def test_the_404_page_must_not_load_analytics(build) -> None:
+    problems = _mutate(build, "404.html", lambda html: html.replace("</body>", ANALYTICS_TAG + "</body>"))
+    assert any("the 404 page must not load analytics" in problem for problem in problems)
 
 
 def test_duplicate_id_is_reported(build) -> None:
@@ -131,7 +171,9 @@ def test_person_schema_on_home_and_about(build) -> None:
         assert data["@type"] == "Person"
         assert data["name"] == "Hank Marquardt"
         assert data["url"] == "https://hankmarquardt.com/"
-    assert '<script' not in (out / "notes" / "index.html").read_text(encoding="utf-8")
+    notes = (out / "notes" / "index.html").read_text(encoding="utf-8")
+    assert "application/ld+json" not in notes
+    assert notes.count(ANALYTICS_TAG) == 1
 
 
 def test_malformed_person_schema_is_reported(build) -> None:

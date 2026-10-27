@@ -35,6 +35,16 @@ STATIC_DIR = ROOT / "static"
 # The only top-level paths the build will delete and repopulate.
 OUTPUT_MARKER = ".site-build-output"
 
+# The owner authorized one client-side script on 2026-10-27: CFLab Analytics. It is
+# first-party and cookieless (a sessionStorage session id, no cookie, no persistent
+# identifier, DNT/GPC honoured), and it posts reduced pageview data to the Analytics
+# Worker. Nothing else may execute on these pages: the allowlist is enforced by
+# sitegen/checks.py, tests/test_build.py, scripts/verify_production.py and the CSP in
+# src/worker.mjs. Changing the id or the origin means changing all of them together.
+ANALYTICS_ORIGIN = "https://analytics.aismallbizguru.com"
+ANALYTICS_SCRIPT_URL = f"{ANALYTICS_ORIGIN}/script.js"
+ANALYTICS_SITE_ID = "as_LSLKDIyn2pzUxJFLdLjLhj"
+
 NAV = (
     ("/work/", "Work"),
     ("/notes/", "Field Notes"),

@@ -31,6 +31,12 @@
     <link rel="alternate" type="application/rss+xml" title="Hank Marquardt — Field Notes" href="/notes/feed.xml">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css">
+    {% if not page.noindex %}
+    <!-- The one approved script: first-party, cookieless CFLab Analytics. It is deferred so it never blocks
+         parsing, it carries no other attribute, and its id is bound to this Site. The 404 page is excluded
+         because a missing path is not a page view worth recording. See docs/ANALYTICS.md. -->
+    <script defer src="{{ analytics.script_url }}" data-site="{{ analytics.site_id }}"></script>
+    {% endif %}
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -62,7 +68,7 @@
             <a href="{{ site.youtube_url }}" rel="me">YouTube</a>
             <a href="{{ site.substack_url }}" rel="me">Substack</a>
           </p>
-          <p class="footer-note">No cookies, no tracking scripts, no accounts.</p>
+          <p class="footer-note">No cookies, no accounts. Cookieless first-party analytics.</p>
         </div>
       </div>
     </footer>

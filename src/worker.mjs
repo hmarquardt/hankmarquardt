@@ -19,9 +19,19 @@ const LEGACY_PATHS = new Map([
   ['/substack', '/elsewhere/'],
 ]);
 
+// One script is allowed, from one origin, and it may only talk back to that same
+// origin: first-party CFLab Analytics (docs/ANALYTICS.md). `script-src` names the
+// Analytics Worker and nothing else, so inline code, other origins and 'self' stay
+// blocked; `connect-src` permits the pageview beacon and no other fetch. The Person
+// JSON-LD needs no allowance here because a `type="application/ld+json"` block is
+// data, not executable script, and browsers do not apply script-src to it. Everything
+// else remains default-src 'none'.
 const SECURITY_HEADERS = {
   'Content-Security-Policy':
-    "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests",
+    "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; " +
+    "script-src https://analytics.aismallbizguru.com; " +
+    "connect-src https://analytics.aismallbizguru.com; " +
+    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests",
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',

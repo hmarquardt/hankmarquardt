@@ -21,6 +21,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from sitegen.config import (  # noqa: E402 - after the path bootstrap above
+    ANALYTICS_ORIGIN,
+    ANALYTICS_SCRIPT_URL,
+    ANALYTICS_SITE_ID,
+)
+
 SITE = "https://hankmarquardt.com"
 APEX_HOST = "hankmarquardt.com"
 HEADERS = {"User-Agent": "hankmarquardt-release-check/1.0", "Cache-Control": "no-cache"}
@@ -107,8 +115,22 @@ def main(argv: list[str] | None = None) -> int:
             failures.append(f"{path}: missing nosniff")
         if headers.get("strict-transport-security") is None:
             failures.append(f"{path}: missing HSTS")
-        if "<script" in body.lower():
-            failures.append(f"{path}: client JavaScript found")
+        expected_scripts = 2 if path in {"/", "/about/"} else 1
+        if body.count("<script") != expected_scripts:
+            failures.append(
+                f"{path}: expected {expected_scripts} <script> tag(s) (one approved analytics tag"
+                f"{' plus Person JSON-LD' if expected_scripts == 2 else ''}), found {body.count('<script')}"
+            )
+        if body.count(f'<script defer src="{ANALYTICS_SCRIPT_URL}" data-site="{ANALYTICS_SITE_ID}"></script>') != 1:
+            failures.append(f"{path}: the approved analytics script is missing or duplicated")
+        if "application/ld+json" not in body.lower() and path in {"/", "/about/"}:
+            failures.append(f"{path}: Person JSON-LD is missing")
+        if f"script-src {ANALYTICS_ORIGIN}" not in csp:
+            failures.append(f"{path}: CSP does not allow the analytics script origin")
+        if f"connect-src {ANALYTICS_ORIGIN}" not in csp:
+            failures.append(f"{path}: CSP does not allow the analytics beacon")
+        if "unsafe-inline" in csp or "unsafe-eval" in csp or "script-src *" in csp:
+            failures.append(f"{path}: CSP was loosened beyond the analytics origin")
         if f'<link rel="canonical" href="{site}{path}"' not in body:
             failures.append(f"{path}: canonical link is missing or wrong")
 

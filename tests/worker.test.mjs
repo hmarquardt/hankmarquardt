@@ -82,6 +82,29 @@ test('security headers are attached to every response', async () => {
   assert.match(response.headers.get('cache-control'), /no-transform/);
 });
 
+test('the CSP allows the approved analytics origin and nothing else', async () => {
+  const csp = (await request('https://hankmarquardt.com/')).headers.get('content-security-policy');
+  const directive = name =>
+    csp.split(';').map(part => part.trim()).find(part => part.startsWith(`${name} `));
+
+  // Still closed by default: the analytics origin is the only addition.
+  assert.equal(directive('default-src'), "default-src 'none'");
+  assert.equal(directive('script-src'), 'script-src https://analytics.aismallbizguru.com');
+  assert.equal(directive('connect-src'), 'connect-src https://analytics.aismallbizguru.com');
+  assert.equal(directive('frame-ancestors'), "frame-ancestors 'none'");
+  assert.equal(directive('form-action'), "form-action 'none'");
+  assert.equal(directive('base-uri'), "base-uri 'none'");
+
+  // No keyword, wildcard or insecure scheme may appear next to the one origin.
+  assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/);
+  assert.doesNotMatch(csp, /\*/);
+  assert.doesNotMatch(csp, /http:\/\//);
+  assert.doesNotMatch(csp, /script-src[^;]*'(self|none)'/);
+  // Person JSON-LD is a data block, not executable script, so it needs no
+  // script-src allowance and must not be the reason for one.
+  assert.equal(csp.match(/analytics\.aismallbizguru\.com/g).length, 2);
+});
+
 test('redirects carry the same security headers', async () => {
   const response = await request('https://www.hankmarquardt.com/');
   assert.equal(response.status, 308);

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
 from conftest import COMMIT, DEFAULT_FEEDS, DRAFT_NOTE, PUBLISHED_NOTE, REPO, TODAY
 
 from sitegen.build import build_site, prepare_output
+from sitegen.config import ANALYTICS_SCRIPT_URL, ANALYTICS_SITE_ID
 from sitegen.checks import check_site
 from sitegen.errors import BuildError
 
@@ -103,10 +105,51 @@ def test_empty_site_has_thoughtful_state_and_valid_feed(build) -> None:
     assert "/notes/" in sitemap
 
 
-def test_no_client_javascript(build) -> None:
+ANALYTICS_OPEN_TAG = (
+    f'<script defer src="{ANALYTICS_SCRIPT_URL}" data-site="{ANALYTICS_SITE_ID}">'
+)
+ANALYTICS_TAG = ANALYTICS_OPEN_TAG + "</script>"
+JSONLD_BLOCK = re.compile(r'<script type="application/ld\+json">.*?</script>', re.S)
+
+
+def test_only_the_approved_script_and_structured_data_execute(build) -> None:
+    """The site ships exactly one script, from one origin, plus JSON-LD data blocks."""
+
     result = build(notes=ALL_NOTES, feeds=DEFAULT_FEEDS)
+    seen = set()
     for path in result.out.rglob("*.html"):
-        assert "<script" not in path.read_text(encoding="utf-8").lower(), path
+        rel = path.relative_to(result.out).as_posix()
+        html = path.read_text(encoding="utf-8")
+        seen.add(rel)
+        if rel == "404.html":
+            # A missing path is not a page view: the 404 page loads nothing.
+            assert "<script" not in html.lower(), rel
+            continue
+        assert html.count(ANALYTICS_TAG) == 1, f"{rel}: approved analytics script missing or duplicated"
+        assert html.count("<script") == len(JSONLD_BLOCK.findall(html)) + 1, rel
+        if rel in {"index.html", "about/index.html"}:
+            blocks = JSONLD_BLOCK.findall(html)
+            assert len(blocks) == 1, rel
+            data = json.loads(blocks[0].split(">", 1)[1].rsplit("<", 1)[0])
+            assert data["@type"] == "Person"
+        else:
+            assert not JSONLD_BLOCK.findall(html), f"{rel}: unexpected structured data"
+        # Remove the two allowed forms; nothing script-like may remain.
+        remainder = JSONLD_BLOCK.sub("", html.replace(ANALYTICS_TAG, ""))
+        assert "<script" not in remainder.lower(), f"{rel}: unapproved client JavaScript"
+    assert {"index.html", "404.html", "about/index.html", "work/index.html", "notes/index.html",
+            "elsewhere/index.html"} <= seen
+    assert any(rel.startswith("notes/") and rel.endswith("/index.html") for rel in seen), seen
+
+
+def test_the_analytics_tag_names_this_site_and_its_own_origin(build) -> None:
+    result = build(notes=ALL_NOTES, feeds=DEFAULT_FEEDS)
+    html = (result.out / "index.html").read_text(encoding="utf-8")
+    tags = [tag for tag in re.findall(r"<script\b[^>]*>", html) if "analytics" in tag]
+    assert tags == [ANALYTICS_OPEN_TAG]
+    assert 'data-site="as_LSLKDIyn2pzUxJFLdLjLhj"' in tags[0]
+    assert "https://analytics.aismallbizguru.com/script.js" in tags[0]
+    assert " defer" in tags[0], "the script must stay deferred so it cannot block parsing"
 
 
 def test_metadata_is_escaped(build) -> None:

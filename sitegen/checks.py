@@ -15,6 +15,8 @@ from itertools import pairwise
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+from .config import ANALYTICS_SCRIPT_URL, ANALYTICS_SITE_ID
+
 VOID_ELEMENTS = frozenset(
     {
         "area",
@@ -47,7 +49,8 @@ class Document:
     links: list[dict[str, str]] = field(default_factory=list)
     anchors: list[str] = field(default_factory=list)
     images: list[dict[str, str]] = field(default_factory=list)
-    scripts: int = 0
+    unapproved_scripts: int = 0
+    analytics_scripts: list[dict[str, str]] = field(default_factory=list)
     structured_data: list[str] = field(default_factory=list)
     stylesheets: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -56,6 +59,18 @@ class Document:
     @property
     def body_text(self) -> str:
         return " ".join(self.text)
+
+
+# The single script this site is allowed to load. The attribute set is exact: a
+# second attribute, a different origin, a missing site id or an inline body all fall
+# outside the allowlist and are reported as unapproved JavaScript.
+def is_approved_analytics_script(attributes: dict[str, str]) -> bool:
+    return (
+        set(attributes) == {"src", "data-site", "defer"}
+        and attributes.get("src") == ANALYTICS_SCRIPT_URL
+        and attributes.get("data-site") == ANALYTICS_SITE_ID
+        and attributes.get("defer") == ""
+    )
 
 
 class _Parser(HTMLParser):
@@ -93,8 +108,12 @@ class _Parser(HTMLParser):
             if attributes.get("type") == "application/ld+json" and set(attributes) == {"type"}:
                 self._in = "script"
                 self._buffer = []
+            elif is_approved_analytics_script(attributes):
+                self.document.analytics_scripts.append(attributes)
             else:
-                self.document.scripts += 1
+                # Anything else is client JavaScript this site does not allow:
+                # inline code, another origin, a missing site id, extra attributes.
+                self.document.unapproved_scripts += 1
         elif tag == "title":
             self._in = tag
             self._buffer = []
@@ -205,8 +224,18 @@ def _check_document(document: Document, dist: Path, *, is_404: bool) -> list[str
         problems.append(f"{rel}: missing canonical link")
     if len(document.h1) != 1:
         problems.append(f"{rel}: expected exactly one <h1>, found {len(document.h1)}")
-    if document.scripts:
-        problems.append(f"{rel}: this site ships no client JavaScript, found {document.scripts} scripts")
+    if document.unapproved_scripts:
+        problems.append(
+            f"{rel}: unapproved client JavaScript, found {document.unapproved_scripts} script(s); "
+            f"the only allowed script is {ANALYTICS_SCRIPT_URL} with data-site={ANALYTICS_SITE_ID}"
+        )
+    if is_404:
+        if document.analytics_scripts:
+            problems.append(f"{rel}: the 404 page must not load analytics")
+    elif len(document.analytics_scripts) != 1:
+        problems.append(
+            f"{rel}: expected exactly one approved analytics script, found {len(document.analytics_scripts)}"
+        )
     if rel.as_posix() in {"index.html", "about/index.html"}:
         if len(document.structured_data) != 1:
             problems.append(f"{rel}: expected one Person JSON-LD block")
