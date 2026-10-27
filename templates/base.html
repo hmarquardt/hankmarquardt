@@ -19,6 +19,9 @@
     <meta property="og:title" content="{{ page.title }}">
     <meta property="og:description" content="{{ page.description }}">
     <meta property="og:url" content="{{ page.canonical or site.origin }}">
+    {% if page.path == "/" or page.path == "/about/" %}
+    <script type="application/ld+json">{{ person_jsonld | safe }}</script>
+    {% endif %}
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="{{ page.title }}">
     <meta name="twitter:description" content="{{ page.description }}">
