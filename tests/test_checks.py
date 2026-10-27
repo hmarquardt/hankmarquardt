@@ -115,3 +115,28 @@ def test_resolve_internal_refuses_traversal(tmp_path: Path) -> None:
     assert resolve_internal(dist, "/../outside.html") is None
     assert resolve_internal(dist, "https://example.com/") is None
     assert resolve_internal(dist, "/index.html") == (dist / "index.html").resolve()
+
+
+
+def test_person_schema_on_home_and_about(build) -> None:
+    import json
+    import re
+
+    out = build_ok(build)
+    for relative in ("index.html", "about/index.html"):
+        html = (out / relative).read_text(encoding="utf-8")
+        blocks = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+        assert len(blocks) == 1
+        data = json.loads(blocks[0])
+        assert data["@type"] == "Person"
+        assert data["name"] == "Hank Marquardt"
+        assert data["url"] == "https://hankmarquardt.com/"
+    assert '<script' not in (out / "notes" / "index.html").read_text(encoding="utf-8")
+
+
+def test_malformed_person_schema_is_reported(build) -> None:
+    out = build_ok(build)
+    index = out / "index.html"
+    html = index.read_text(encoding="utf-8")
+    index.write_text(html.replace('"@type": "Person"', '"@type": "Product"'), encoding="utf-8")
+    assert any("invalid Person structured data" in item for item in check_site(out))
