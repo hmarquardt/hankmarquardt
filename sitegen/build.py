@@ -9,6 +9,7 @@ Design rules enforced here:
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -117,8 +118,19 @@ def _page(
 
 
 def _render(environment: Environment, template: str, page: dict[str, object], **context: object) -> str:
+    person = {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "@id": f"{config.SITE_ORIGIN}/#person",
+        "name": config.SITE_NAME,
+        "url": f"{config.SITE_ORIGIN}/",
+        "description": config.SITE_DESCRIPTION,
+        "jobTitle": "Software engineer",
+        "sameAs": [config.GITHUB_URL, config.YOUTUBE_CHANNEL_URL, config.SUBSTACK_URL],
+    }
     rendered = environment.get_template(template).render(
-        site=_site_context(), page=page, nav=config.NAV, **context
+        site=_site_context(), page=page, nav=config.NAV,
+        person_jsonld=json.dumps(person, ensure_ascii=True).replace("<", "\\u003c"), **context
     )
     if not rendered.endswith("\n"):
         rendered += "\n"
