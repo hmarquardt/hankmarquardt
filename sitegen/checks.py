@@ -48,6 +48,7 @@ class Document:
     anchors: list[str] = field(default_factory=list)
     images: list[dict[str, str]] = field(default_factory=list)
     scripts: int = 0
+    structured_data: list[str] = field(default_factory=list)
     stylesheets: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     text: list[str] = field(default_factory=list)
@@ -89,7 +90,11 @@ class _Parser(HTMLParser):
             if "alt" not in attributes:
                 self.document.errors.append(f"<img> without alt: {attributes.get('src', '')}")
         elif tag == "script":
-            self.document.scripts += 1
+            if attributes.get("type") == "application/ld+json" and set(attributes) == {"type"}:
+                self._in = "script"
+                self._buffer = []
+            else:
+                self.document.scripts += 1
         elif tag == "title":
             self._in = tag
             self._buffer = []
@@ -130,6 +135,8 @@ class _Parser(HTMLParser):
                 self.document.h1.append(text)
             elif tag == "title":
                 self.document.title = text
+            elif tag == "script":
+                self.document.structured_data.append("".join(self._buffer))
             self._in = None
 
     def handle_data(self, data: str) -> None:
@@ -200,6 +207,22 @@ def _check_document(document: Document, dist: Path, *, is_404: bool) -> list[str
         problems.append(f"{rel}: expected exactly one <h1>, found {len(document.h1)}")
     if document.scripts:
         problems.append(f"{rel}: this site ships no client JavaScript, found {document.scripts} scripts")
+    if rel.as_posix() in {"index.html", "about/index.html"}:
+        if len(document.structured_data) != 1:
+            problems.append(f"{rel}: expected one Person JSON-LD block")
+        else:
+            try:
+                data = json.loads(document.structured_data[0])
+                if (data.get("@type") != "Person"
+                    or data.get("name") != "Hank Marquardt"
+                    or data.get("url") != "https://hankmarquardt.com/"
+                    or data.get("@id") != "https://hankmarquardt.com/#person"
+                    or not isinstance(data.get("sameAs"), list)):
+                    problems.append(f"{rel}: invalid Person structured data")
+            except (ValueError, AttributeError):
+                problems.append(f"{rel}: malformed Person structured data")
+    elif document.structured_data:
+        problems.append(f"{rel}: unexpected structured data block")
     if document.stylesheets != ["/styles.css"]:
         problems.append(f"{rel}: expected /styles.css as the only stylesheet")
     if "main" not in document.ids:
