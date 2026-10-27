@@ -192,6 +192,16 @@ Three independent levers, in order of preference:
   production.
 - No secrets exist in this repository. `.env*`, `.dev.vars*`, keys, credentials and
   `dist/` are ignored.
+- **Search performance is measured without touching this site.** CFLab Analytics
+  reads Google Search Console server-to-server for the property
+  `sc-domain:hankmarquardt.com` and stores daily impressions, clicks, CTR and
+  average position. That collection needs no script, cookie, beacon or visitor
+  identifier on these pages, and it is the only measurement this site has.
+- **First-party visitor analytics is intentionally absent, not forgotten.**
+  Adding it would need a `<script>` tag (refused by `sitegen/checks.py`), a
+  `script-src`/`connect-src` CSP change in `src/worker.mjs`, and an exception to
+  the policy above. That is an owner decision about this site's promise, not a
+  build task; the pages stay script-free until the owner decides otherwise.
 
 ## Migration from the Streamlit app
 
