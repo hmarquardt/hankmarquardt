@@ -1,0 +1,101 @@
+name: Deep Cuts checks and optional preview
+
+on:
+  pull_request:
+    paths: ['deepcuts/**', '.github/workflows/deepcuts.yml']
+  push:
+    branches: [main]
+    paths: ['deepcuts/**', '.github/workflows/deepcuts.yml']
+  workflow_dispatch:
+    inputs:
+      deploy_preview:
+        description: 'Deploy deepcuts-preview using existing dedicated preview resources'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deepcuts-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: deepcuts
+
+env:
+  WRANGLER_SEND_METRICS: 'false'
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: deepcuts/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deepcuts-browser-results
+          path: |
+            deepcuts/playwright-report/
+            deepcuts/test-results/
+          retention-days: 7
+
+  preview:
+    # No push/PR deployment and no production job. Dispatch is a deliberate
+    # release action after the operator provisions and reviews preview resources.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy_preview == true &&
+      github.ref == 'refs/heads/main' &&
+      vars.DEEPCUTS_PREVIEW_DEPLOY_ENABLED == 'true'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: deepcuts-preview
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.DEEPCUTS_CLOUDFLARE_API_TOKEN }}
+      DEEPCUTS_ACCOUNT_ID: ${{ vars.DEEPCUTS_ACCOUNT_ID }}
+      DEEPCUTS_PREVIEW_D1_ID: ${{ vars.DEEPCUTS_PREVIEW_D1_ID }}
+      DEEPCUTS_PREVIEW_ORIGIN: ${{ vars.DEEPCUTS_PREVIEW_ORIGIN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: deepcuts/package-lock.json
+      - run: npm ci
+      - name: Validate preview identities and credential shape
+        env:
+          DEEPCUTS_PREVIEW_OWNER_KEY: ${{ secrets.DEEPCUTS_PREVIEW_OWNER_KEY }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node scripts/prepare-preview.mjs
+          node scripts/write-preview-secret.mjs
+      - run: npm run build
+      - name: Validate preview bundle and existing resource identities before any writes
+        run: |
+          npx wrangler deploy --dry-run --config wrangler.preview.generated.json --no-x-provision --no-x-auto-create
+          node scripts/preflight-preview.mjs
+      - name: Require the exact reviewed foundation migration
+        # No general remote migration runner: future migrations require a reviewed
+        # migration/recovery policy before this check can be changed.
+        run: node scripts/check-preview-migration.mjs
+      - name: Apply the additive foundation to the existing preview D1 only
+        run: npx wrangler d1 migrations apply DB --remote --config wrangler.preview.generated.json --no-x-provision --no-x-auto-create
+      - name: Release isolated preview with independent owner key
+        run: |
+          trap 'rm -f "$RUNNER_TEMP/deepcuts-preview-secrets.json"' EXIT
+          npx wrangler deploy --config wrangler.preview.generated.json --no-x-provision --no-x-auto-create --var "DEPLOY_REVISION:$GITHUB_SHA" --secrets-file "$RUNNER_TEMP/deepcuts-preview-secrets.json" --message "Deep Cuts preview $GITHUB_SHA"
+      - run: node scripts/verify-preview.mjs

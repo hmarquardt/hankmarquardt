@@ -1,0 +1,49 @@
+{
+  "name": "deepcuts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "build": "vite build && node scripts/build-pwa.mjs",
+    "dev": "npm run setup && npm run build && npm run db:migrate && wrangler dev --config wrangler.json --ip 127.0.0.1 --port 8788",
+    "db:migrate": "wrangler d1 migrations apply DB --local --config wrangler.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run && node --test tests/tooling/*.test.mjs",
+    "test:e2e": "playwright test",
+    "fixtures": "node scripts/fixtures.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run bundle:check",
+    "bundle:check": "wrangler deploy --dry-run --config wrangler.json --outdir .wrangler/dry-run",
+    "deploy": "node scripts/refuse-deploy.mjs",
+    "dev:e2e": "npm run setup && npm run fixtures && npm run build && node scripts/e2e-server.mjs",
+    "format": "prettier --write src scripts tests *.ts *.json index.html public/*.css public/*.svg public/*.webmanifest docs/*.md README.md",
+    "format:check": "prettier --check src scripts tests *.ts *.json index.html public/*.css public/*.svg public/*.webmanifest docs/*.md README.md",
+    "smoke:production": "node scripts/production-smoke.mjs"
+  },
+  "dependencies": {
+    "hono": "4.13.16",
+    "idb": "8.0.4",
+    "music-metadata": "12.3.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261102.1",
+    "@ffmpeg-installer/ffmpeg": "1.1.0",
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "prettier": "3.9.10",
+    "sharp": "0.35.5",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.1.0",
+    "wrangler": "4.153.0"
+  }
+}
