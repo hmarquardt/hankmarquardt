@@ -2,7 +2,9 @@
 
 A private, mobile-first listening room for personally owned music. An independent
 PWA in the `hmarquardt/hankmarquardt` repository. Intended production origin:
-**https://deepcuts.hankmarquardt.com**. Production is not provisioned or deployed.
+**https://deepcuts.hankmarquardt.com**. The first production release is live; see
+the [production release record](docs/PRODUCTION.md) for the deployed revision,
+verification, authentication-key location and remaining limitations.
 
 ## Run locally
 

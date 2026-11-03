@@ -1,5 +1,11 @@
 # First milestone handoff
 
+The foundation handoff below records the original local-only milestone. The owner
+subsequently authorized direct production deployment without a hosted preview.
+That release is now live at **https://deepcuts.hankmarquardt.com**. See the
+[production release record](PRODUCTION.md) for current deployment status and
+production verification. Physical-device acceptance remains deferred.
+
 ## Scope and execution plan
 
 1. Inspect the repository, production deployment, and CFLab patterns. **Complete.**
@@ -60,8 +66,8 @@ CI run, or remote deployment tests have been represented as completed.
 
 - Local preview: `cd deepcuts && npm ci && npm run dev`, then open
   `http://127.0.0.1:8788`. Key setup is documented in README.
-- Remote preview: **not provisioned, not deployed**. No billable infrastructure,
-  cloud secrets, production data, DNS, or Worker deployments changed.
+- Remote preview: **not provisioned, not deployed**. The owner authorized a direct
+  production release instead; dedicated production resources are now provisioned.
 - CI: new path-scoped validation workflow, plus an optional protected manual
   preview release job. No production release automation is enabled.
 - Required resources/secrets and the explicit approval boundary are in
@@ -78,16 +84,15 @@ CI run, or remote deployment tests have been represented as completed.
   an offline lock, cross-device queue/state conflict resolution.
 - Storage persistence/eviction, codec support and long background audio sessions
   depend on the browser/device. No native app or transcoding fallback.
-- Remote Cloudflare compatibility, CI execution and remote release smoke tests
-  have not been exercised without authorized resources; local dry-run/emulation
-  is not equivalent to a remote deployment.
+- Production deployment and remote release smoke tests now pass. Hosted CI has
+  not been triggered; local validation and an explicitly authorized direct
+  deployment were used to preserve the personal site's deployment pipeline.
 - Production backup/restore, migration recovery policy and physical acceptance.
 
 ## Next recommended milestone
 
-Authorize and provision an isolated preview, run the same end-to-end slice there
-with generated audio, then test a small personally owned album privately. Perform
-the planned physical acceptance for offline installed launch, locked-screen
-playback, Bluetooth media controls and installation. Resolve findings before
-adding playlist download and resumable large-file import. Establish verified
-backups before moving the primary library or enabling production.
+Begin importing small personally owned albums in production and refining the
+experience. Add resumable large-file import and playlist management/downloads,
+and establish independent verified backups. Physical acceptance for installed
+offline launch, locked-screen playback, Bluetooth controls and installation is
+deferred at the owner's request; it is not a prerequisite to beginning imports.
