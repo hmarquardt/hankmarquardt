@@ -147,7 +147,15 @@ try {
         ),
       );
       await page.evaluate(async () => {
-        await navigator.serviceWorker.ready;
+        await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("Service worker not ready")),
+              20000,
+            ),
+          ),
+        ]);
       });
       await page.waitForFunction(() => !!navigator.serviceWorker.controller);
       const paths = await page.evaluate(async () => {

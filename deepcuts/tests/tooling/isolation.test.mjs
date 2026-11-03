@@ -32,7 +32,11 @@ test("environment identities and resources are independent of the personal site"
   }
   assert.deepEqual(configs[1].routes, []);
   assert.deepEqual(configs[2].routes, [
-    { pattern: "deepcuts.hankmarquardt.com", custom_domain: true },
+    {
+      pattern: "deepcuts.hankmarquardt.com",
+      zone_id: "1d02b937540d58cb201c4abcbb7df4d1",
+      custom_domain: true,
+    },
   ]);
 });
 test("preview generation requires exact existing-resource UUID and isolated HTTPS origin", () => {

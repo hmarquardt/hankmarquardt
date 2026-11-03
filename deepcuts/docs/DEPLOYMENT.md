@@ -1,8 +1,9 @@
 # Independent deployment
 
-**No resources have been created and no remote deployment is authorized by this
-foundation.** The local preview works without a Cloudflare account. The following
-is an operator runbook for a later explicitly authorized preview release.
+The owner explicitly authorized the first direct production deployment on
+2026-11-02; a separate hosted preview is not required. Production releases use
+only the dedicated `deepcuts` Worker, `deepcuts` D1 database and
+`deepcuts-originals` private R2 bucket. The personal-site deployment is separate.
 
 | Environment | Worker             | D1 binding `DB`    | R2 binding `MUSIC`           | Public routing               |
 | ----------- | ------------------ | ------------------ | ---------------------------- | ---------------------------- |
@@ -10,9 +11,10 @@ is an operator runbook for a later explicitly authorized preview release.
 | Preview     | `deepcuts-preview` | `deepcuts-preview` | `deepcuts-preview-originals` | its own workers.dev origin   |
 | Production  | `deepcuts`         | `deepcuts`         | `deepcuts-originals`         | `deepcuts.hankmarquardt.com` |
 
-Preview and production IDs are intentionally unresolved in their committed configs.
+The preview ID is intentionally unresolved. The production config pins the reviewed
+Cloudflare account, production D1 UUID and the exact production subdomain/zone.
 The root `wrangler.json`, personal-site Worker `hankmarquardt`, its domains,
-Cloudflare API token and workflow are not reused or edited. No wildcard routes,
+Cloudflare CI secret and workflow are not reused or edited. No wildcard routes,
 root-domain routes, service bindings, cron jobs or public R2 access are configured.
 The default `deepcuts/wrangler.json` is local-only, so Wrangler cannot walk up to
 the personal-site config. Every automated command also names its config explicitly.
@@ -75,14 +77,63 @@ deliberately refuses. No workflows are dispatched or repository variables change
 as part of this implementation. The pre-existing personal-site workflow still
 runs on all pushes and may release the unchanged site according to its own gate.
 
-## Production prerequisites
+## Authorized direct production release
 
-Before any production authorization: finish preview acceptance; create distinct
-production D1 and private R2 resources; generate a separate owner key; configure
-and verify backups with restore testing; define safe migration/recovery policy;
-prepare a protected, revision-verifying production workflow; and explicitly approve
-the `deepcuts.hankmarquardt.com` custom-domain route. The production config is a
-template, not a release command. Do not point it at preview resources.
+The first release is committed and pushed on `deepcuts/production-foundation` in
+the existing repository. A push to `main` would run the existing personal-site
+deployment, so this release branch preserves that Worker's live version and the
+existing pipeline. No branch protections or deployment gates are changed. The
+owner's direct-production authorization supersedes the foundation's suggested
+preview-first sequence. Physical-device acceptance is deferred at the owner's
+request. Subsequent production releases still require explicit authorization;
+`npm run deploy` remains a refusal guard, and the preview-only CI is unchanged.
+
+Production uses D1 `0922ad5d-3193-4e49-9ff5-9926d782792d`, binding `DB`, and R2
+`deepcuts-originals`, binding `MUSIC`, in account
+`b1aa310aa0a1638d72b8b086a21e557c`. Only the Worker custom domain
+`deepcuts.hankmarquardt.com` is configured. Never attach a public domain or enable
+`r2.dev` on the bucket. Neither R2 API keys nor browser CORS rules are needed.
+
+The production `OWNER_KEY` is a separately generated 256-bit random value, uploaded
+as a Worker secret alongside the release using `--secrets-file`. The config declares
+it required. The mode-0600 local source files are `.production/owner-key.txt` and
+`.production/secrets.json`, inside an ignored mode-0700 directory. The owner should
+retain the access key in a password manager. It is never printed, included in
+assets, committed, or recorded in browser screenshots/traces. Do not reuse the
+local development key. Rotating this secret invalidates all existing sessions.
+
+The reviewed first migration only creates the foundation tables. Verify its hash
+with `node scripts/check-preview-migration.mjs` (the content check is shared with
+preview), then apply it to **this dedicated database only**. Future migrations
+require a new review and a recovery plan. D1 Time Travel is platform recovery;
+scheduled exports, independent R2 backup and a verified restore remain follow-up
+work. Keep another copy of all originals; this first release is a listening
+interface, not yet the sole archival home for the collection.
+
+For an explicitly authorized release, from a clean committed release branch:
+
+```sh
+cd deepcuts
+npm run typecheck
+npm test
+npm run test:e2e
+npm run build
+node scripts/check-preview-migration.mjs
+npx wrangler deploy --dry-run --config wrangler.production.json --no-x-provision --no-x-auto-create --secrets-file .production/secrets.json
+npx wrangler d1 migrations apply DB --remote --config wrangler.production.json --no-x-provision --no-x-auto-create
+npx wrangler deploy --config wrangler.production.json --no-x-provision --no-x-auto-create --secrets-file .production/secrets.json --var "DEPLOY_REVISION:$(git rev-parse HEAD)" --message "Deep Cuts production $(git rev-parse HEAD)"
+DEEPCUTS_REVISION="$(git rev-parse HEAD)" npm run smoke:production
+```
+
+The production smoke runs real HTTPS API checks and mobile/desktop Chromium
+sign-in and sign-out, validates revocation and API/media access control, checks
+the exact commit, loads JS/CSS and install assets, and verifies the service-worker
+cache contains no private API responses. It writes no music/import data and
+records no production credentials or library contents in logs or browser artifacts.
+Compare the personal site's current deployment, domains/routes and live version
+with the captured pre-release baseline. The local audit uses authenticated
+read-only API calls; authoritative DNS listing can require additional DNS Read
+permission beyond the standard Wrangler OAuth scopes.
 
 ## Recovery
 
