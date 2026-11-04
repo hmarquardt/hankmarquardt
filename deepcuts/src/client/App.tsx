@@ -1414,9 +1414,9 @@ export function App() {
                   </label>
                   <p className="small muted">
                     Select all tracks from one album. Embedded artwork or
-                    cover.jpg / folder.png is included. Up to 100 tracks,
-                    { " " }{formatBytes(MAX_AUDIO_BYTES)} each. Folder import is
-                    available below on supported browsers.
+                    cover.jpg / folder.png is included. Up to 100 tracks,{" "}
+                    {formatBytes(MAX_AUDIO_BYTES)} each. Folder import is available
+                    below on supported browsers.
                   </p>
                   <label className="folder-picker">
                     Choose an album folder
