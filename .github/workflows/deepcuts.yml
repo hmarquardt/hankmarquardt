@@ -1,4 +1,4 @@
-name: Deep Cuts checks and optional preview
+name: Deep Cuts checks, production and optional preview
 
 on:
   pull_request:
@@ -99,3 +99,53 @@ jobs:
           trap 'rm -f "$RUNNER_TEMP/deepcuts-preview-secrets.json"' EXIT
           npx wrangler deploy --config wrangler.preview.generated.json --no-x-provision --no-x-auto-create --var "DEPLOY_REVISION:$GITHUB_SHA" --secrets-file "$RUNNER_TEMP/deepcuts-preview-secrets.json" --message "Deep Cuts preview $GITHUB_SHA"
       - run: node scripts/verify-preview.mjs
+
+  production:
+    # Production is opt-in and limited to changes committed to main.
+    # No unrelated site job is invoked by this workflow.
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.DEEPCUTS_PRODUCTION_DEPLOY_ENABLED == 'true'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: deepcuts-production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.DEEPCUTS_PRODUCTION_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: b1aa310aa0a1638d72b8b086a21e557c
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: deepcuts/package-lock.json
+      - run: npm ci
+      - name: Require dedicated production token
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo '::error::Configure DEEPCUTS_PRODUCTION_API_TOKEN in the deepcuts-production environment.'
+            exit 1
+          fi
+      - name: Build the validated source
+        run: npm run build
+      - name: Check exact approved D1 migration hashes
+        run: node scripts/check-preview-migration.mjs
+      - name: Validate production Worker bundle and pinned resources
+        run: |
+          npx wrangler deploy --dry-run --config wrangler.production.json --no-x-provision --no-x-auto-create --outdir .wrangler/production-dry-run
+      - name: Apply only reviewed migrations to dedicated Deep Cuts D1
+        run: |
+          npx wrangler d1 migrations apply DB --remote --config wrangler.production.json --no-x-provision --no-x-auto-create
+      - name: Release only Deep Cuts, retaining its existing OWNER_KEY secret
+        run: |
+          npx wrangler deploy --config wrangler.production.json --no-x-provision --no-x-auto-create --var "DEPLOY_REVISION:$GITHUB_SHA" --message "Deep Cuts production $GITHUB_SHA"
+      - name: Verify public revision, security headers, and private API rejection
+        run: node scripts/verify-production-ci.mjs
+      - name: Record verified release
+        run: |
+          echo "Deep Cuts deployment verified: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://deepcuts.hankmarquardt.com" >> "$GITHUB_STEP_SUMMARY"
