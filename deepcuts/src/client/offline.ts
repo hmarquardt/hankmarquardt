@@ -188,6 +188,8 @@ export async function downloadPlaylist(
       { playlist, downloaded_at: new Date().toISOString() },
       playlist.id,
     );
+    // An update may drop tracks that no other collection references.
+    if (existing) await releaseFiles(existing.playlist.tracks.map((t) => t.id));
   } catch (error) {
     await releaseFiles(written);
     throw error;
