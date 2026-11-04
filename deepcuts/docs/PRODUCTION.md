@@ -12,9 +12,9 @@ device acceptance were not required for these releases.
 | ----------------------- | --------------------------------------------------------------------- |
 | Source repository       | `hmarquardt/hankmarquardt`                                            |
 | Release branch          | `deepcuts/uploads-and-playlists`                                      |
-| Deployed source commit  | `cc54027402ed0ff736fdda37508fb118cfb489a6`                            |
+| Deployed source commit  | `0b522c81ca92040f2b8a7db4eeac71b25c791d4c`                            |
 | Cloudflare Worker       | `deepcuts`                                                            |
-| Deployed Worker version | `4530a248-29a0-44ce-8ecf-0ee8a7562ece`                                |
+| Deployed Worker version | `8c9e51fa-6d55-46e5-9157-ae9b2a914052`                                |
 | D1                      | `deepcuts`, UUID `0922ad5d-3193-4e49-9ff5-9926d782792d`, binding `DB` |
 | R2                      | `deepcuts-originals`, binding `MUSIC`, Standard storage in ENAM       |
 | Authentication          | Required Worker secret `OWNER_KEY`, unchanged production value        |
@@ -66,6 +66,11 @@ device acceptance were not required for these releases.
   to the pre-release snapshot. Apex and www public DNS answers are unchanged. The
   root Wrangler config, personal-site Worker source and personal-site workflow
   were not modified; the only workflow edit is a Deep Cuts step label.
+- The first deploy of this release was `cc54027`; a follow-up on the same branch
+  (`0b522c8`) reclaims files a previously downloaded playlist no longer
+  references. It re-passed the dry run, both browser projects, the production
+  smoke and the same before/after data check. The table above records the final
+  revision and Worker version.
 - Local validation: **53** unit/API tests, **6** isolation/deployment tests,
   **12** mobile and desktop browser tests, TypeScript, Prettier, PWA build and a
   production dry-run bundle. The personal site's `uv run pytest` (105), worker
