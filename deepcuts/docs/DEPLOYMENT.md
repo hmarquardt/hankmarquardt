@@ -14,10 +14,48 @@ only the dedicated `deepcuts` Worker, `deepcuts` D1 database and
 The preview ID is intentionally unresolved. The production config pins the reviewed
 Cloudflare account, production D1 UUID and the exact production subdomain/zone.
 The root `wrangler.json`, personal-site Worker `hankmarquardt`, its domains,
-Cloudflare CI secret and workflow are not reused or edited. No wildcard routes,
+and Cloudflare CI secret are not reused. The personal-site workflow has only a
+Deep Cuts path exclusion to prevent unrelated deployments. No wildcard routes,
 root-domain routes, service bindings, cron jobs or public R2 access are configured.
 The default `deepcuts/wrangler.json` is local-only, so Wrangler cannot walk up to
 the personal-site config. Every automated command also names its config explicitly.
+
+## Automated production releases (opt-in)
+
+Deep Cuts now has an independent, gated production release job in
+`.github/workflows/deepcuts.yml`. On Deep Cuts changes pushed to `main`,
+validation runs first (TypeScript, unit/API, Worker build and browser tests).
+A successful validation deploys only `deepcuts` **if** the repository variable
+`DEEPCUTS_PRODUCTION_DEPLOY_ENABLED` is exactly `true`. It is not set by the
+workflow and must remain unset until the credentials and environment are ready.
+
+One-time GitHub setup:
+
+1. Create a GitHub Actions environment named `deepcuts-production`, limited to
+   branch `main`. Configure optional required reviewers if desired.
+2. Create a dedicated Cloudflare API token with the permissions necessary for
+   the existing `deepcuts` Worker deployment, its D1 migration, existing R2
+   binding, and custom domain validation. Do not reuse the personal-site token.
+   Cloudflare API token scoping does not necessarily isolate a single Worker;
+   assess account-wide edit permissions.
+3. Store this token in the `deepcuts-production` environment secret named
+   `DEEPCUTS_PRODUCTION_API_TOKEN`. **Do not** store or copy the Deep Cuts
+   `OWNER_KEY` to GitHub. The existing Worker secret is retained on deployments.
+4. Set the repository Actions variable
+   `DEEPCUTS_PRODUCTION_DEPLOY_ENABLED=true` only after setup is complete.
+
+The release job checks reviewed migration hashes, performs an explicit
+production-config dry run, applies only approved pending D1 migrations to the
+pinned Deep Cuts database, deploys the dedicated Worker, and checks that
+`/api/version` matches the commit SHA. The automated smoke verifies security
+headers, unauthenticated API denial, and public PWA files, without accessing
+private music or taking authenticated screenshots. Failure stops the job; it
+does **not** automatically roll back D1 or Worker code. If a new migration is
+introduced, update the reviewed hash manifest only after a recovery review.
+
+The personal-site push workflow ignores commits that modify only
+`deepcuts/**` and `.github/workflows/deepcuts.yml`. Changes elsewhere can
+still cause the personal-site workflow to run.
 
 ## Local preview
 
@@ -72,7 +110,7 @@ smoke check verifies the exact commit at `/api/version`, an unauthenticated 401
 for `/api/library`, and shell security headers. Future migrations are rejected
 until a reviewed migration and recovery policy replaces the foundation-only gate.
 
-There is no deploy on push or PR, and **no production job**. `npm run deploy`
+There is no preview deploy on push or PR. Production deploys on push only after the separate explicit production gate is enabled. `npm run deploy`
 deliberately refuses. No workflows are dispatched or repository variables changed
 as part of this implementation. The pre-existing personal-site workflow still
 runs on all pushes and may release the unchanged site according to its own gate.
@@ -85,8 +123,8 @@ deployment, so this release branch preserves that Worker's live version and the
 existing pipeline. No branch protections or deployment gates are changed. The
 owner's direct-production authorization supersedes the foundation's suggested
 preview-first sequence. Physical-device acceptance is deferred at the owner's
-request. Subsequent production releases still require explicit authorization;
-`npm run deploy` remains a refusal guard, and the preview-only CI is unchanged.
+request. Subsequent production releases are authorized through the opt-in GitHub Actions
+production gate described above; `npm run deploy` remains a refusal guard.
 
 Production uses D1 `0922ad5d-3193-4e49-9ff5-9926d782792d`, binding `DB`, and R2
 `deepcuts-originals`, binding `MUSIC`, in account
