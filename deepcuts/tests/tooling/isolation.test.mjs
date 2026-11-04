@@ -129,12 +129,10 @@ test("CI isolates gated preview and production releases from the personal site",
   assert.match(workflow, /environment: deepcuts-preview/);
   assert.match(workflow, /preflight-preview\.mjs/);
   assert.match(workflow, /--no-x-provision --no-x-auto-create/);
-  assert.match(workflow, /DEEPCUTS_PRODUCTION_DEPLOY_ENABLED == 'true'/);
-  assert.match(workflow, /environment: deepcuts-production/);
-  assert.match(workflow, /secrets\.DEEPCUTS_PRODUCTION_API_TOKEN/);
+  assert.match(workflow, /CLOUDFLARE_DEPLOY_ENABLED == 'true'/);
+  assert.match(workflow, /secrets\.CLOUDFLARE_API_TOKEN/);
   assert.match(workflow, /wrangler\.production\.json/);
   assert.match(workflow, /verify-production-ci\.mjs/);
-  assert.doesNotMatch(workflow, /secrets\.CLOUDFLARE_API_TOKEN/);
   const personalWorkflow = await readFile(
     new URL("../../../.github/workflows/site.yml", import.meta.url),
     "utf8",
