@@ -35,6 +35,7 @@ import {
   TrackPickerDialog,
 } from "./playlists";
 import {
+  MAX_AUDIO_BYTES,
   formatBytes,
   formatTime,
   type Album,
@@ -1344,7 +1345,7 @@ export function App() {
         >
           <section
             ref={dialogRef}
-            className={`modal ${playerOpen ? "player-modal" : ""}`}
+            className={`modal ${playerOpen ? "player-modal" : ""} ${importOpen ? "import-modal" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-label={
@@ -1413,9 +1414,9 @@ export function App() {
                   </label>
                   <p className="small muted">
                     Select all tracks from one album. Embedded artwork or
-                    cover.jpg / folder.png is included. Up to 100 tracks, 32 MiB
-                    each. Folder import is available below on supported
-                    browsers.
+                    cover.jpg / folder.png is included. Up to 100 tracks,
+                    { " " }{formatBytes(MAX_AUDIO_BYTES)} each. Folder import is
+                    available below on supported browsers.
                   </p>
                   <label className="folder-picker">
                     Choose an album folder
