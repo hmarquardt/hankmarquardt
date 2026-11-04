@@ -1,4 +1,51 @@
-# First milestone handoff
+# Upload and playlist milestone
+
+The foundation below is still the deployment record. This milestone adds larger
+track uploads and complete playlists; see [PRODUCTION](PRODUCTION.md) for the
+release that carries it.
+
+## Scope and execution plan
+
+1. Inspect the import pipeline, shared size validation, request buffering, hash
+   verification and R2 writes. **Complete.**
+2. Raise the per-track ceiling safely by streaming the request body into R2
+   through an incremental verifier instead of buffering 64 MiB in the Worker.
+   **Complete.**
+3. Build playlist create/rename/delete/add/remove/reorder APIs on the existing
+   tables, with sessions, validation and referential integrity. **Complete.**
+4. Build the mobile-first playlist browsing and editing interface on the existing
+   track ids and player. **Complete.**
+5. Add offline playlist downloads that reuse existing IndexedDB audio, keep files
+   needed by other collections, and survive a cold PWA reload. **Complete.**
+6. Expand unit, API and Playwright coverage; run the personal-site regression
+   suite; release to production. **Complete.**
+
+## Validation
+
+| Check                                                      | Result                                                    |
+| ---------------------------------------------------------- | --------------------------------------------------------- |
+| `npm run typecheck`                                        | Pass                                                      |
+| `npm test`                                                 | 53 unit/API tests + 6 deployment/isolation tests pass     |
+| `npm run test:e2e`                                         | 12 tests pass: Pixel 7 and desktop Chromium               |
+| `npm run build`                                            | PWA bundle, public shell precache and PNG icons generated |
+| `npm run bundle:check`                                     | Worker dry-run succeeds; nothing uploaded                 |
+| `npm run format:check`                                     | Pass                                                      |
+| Existing personal-site `uv run pytest`                     | 105 pass                                                  |
+| Existing personal-site `node --test tests/worker.test.mjs` | 13 pass                                                   |
+| Existing personal-site `uv run python -m sitegen build`    | Pass, including structural checks                         |
+
+New upload coverage includes a real 38 MiB streamed upload, exact-limit and
+one-byte-over manifest boundaries, short and long bodies, digest mismatch,
+non-audio contents, an interrupted stream followed by a clean retry, missing or
+wrong `Content-Length`, and non-overwrite behavior on conflicting objects and
+retries. Playlist coverage includes lifecycle, validation, cross-album membership,
+duplicate rejection, staging-track rejection, ordering, stale reorder rejection,
+removal compaction, playlist deletion isolation and 401s on every route. Browser
+coverage adds playlist create/add/reorder/rename/play/shuffle/queue/remove,
+playlist deletion keeping the library, and a download → offline reload → playback
+flow that asserts shared audio is stored once and zero API requests are made.
+
+# Foundation handoff
 
 The foundation handoff below records the original local-only milestone. The owner
 subsequently authorized direct production deployment without a hosted preview.
@@ -75,11 +122,11 @@ CI run, or remote deployment tests have been represented as completed.
 
 ## Provisional or deferred
 
-- Artist pages, song lists, richer search results, playlist CRUD and playlist
-  offline downloads. Playlist tables exist only as a schema foundation.
+- Artist pages, song lists and richer search results.
 - More than one album per import, background/resumable imports, duplicate
   detection, metadata editing, import-management UI and storage cleanup.
-- Larger than 32 MiB tracks, more than 100 tracks/album, and unsupported/DRM files.
+- Larger than 64 MiB tracks, resumable/multipart uploads, more than 100
+  tracks/album, and unsupported/DRM files.
 - Download resumption, progress in bytes, cross-tab coordination, encryption or
   an offline lock, cross-device queue/state conflict resolution.
 - Storage persistence/eviction, codec support and long background audio sessions
@@ -92,7 +139,7 @@ CI run, or remote deployment tests have been represented as completed.
 ## Next recommended milestone
 
 Begin importing small personally owned albums in production and refining the
-experience. Add resumable large-file import and playlist management/downloads,
-and establish independent verified backups. Physical acceptance for installed
+experience. Add resumable/multipart large-file import and establish independent
+verified backups. Physical acceptance for installed
 offline launch, locked-screen playback, Bluetooth controls and installation is
 deferred at the owner's request; it is not a prerequisite to beginning imports.

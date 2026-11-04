@@ -1,3 +1,4 @@
 {
-  "0001_foundation.sql": "69bb81aaf8286593fe5eb047b65e0e540c60a84afb11062bf722f2c6cc62f2ae"
+  "0001_foundation.sql": "69bb81aaf8286593fe5eb047b65e0e540c60a84afb11062bf722f2c6cc62f2ae",
+  "0002_playlists.sql": "d87e1dccf533d8e79217644f6983120bcbe98ea1a34e07db18b19d86130e36b4"
 }

@@ -17,7 +17,11 @@ export type IconName =
   | "wifi"
   | "shuffle"
   | "trash"
-  | "volume";
+  | "volume"
+  | "playlist"
+  | "edit"
+  | "up"
+  | "down";
 const paths: Record<IconName, React.ReactNode> = {
   record: (
     <>
@@ -96,6 +100,16 @@ const paths: Record<IconName, React.ReactNode> = {
       <path d="M3 9h4l5-5v16l-5-5H3Zm13-2a7 7 0 0 1 0 10" />
     </>
   ),
+  playlist: (
+    <>
+      <path d="M3 6h12M3 12h12M3 18h8" />
+      <circle cx="17" cy="18" r="2.5" />
+      <path d="M19.5 18V7l-3 1" />
+    </>
+  ),
+  edit: <path d="m4 20 4-1L19 8l-3-3L5 16l-1 4ZM14 7l3 3" />,
+  up: <path d="m6 15 6-6 6 6" />,
+  down: <path d="m6 9 6 6 6-6" />,
 };
 export function Icon({
   name,

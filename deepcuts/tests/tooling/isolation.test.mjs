@@ -103,7 +103,7 @@ test("a production database ID or missing preview bucket cannot pass remote iden
     /identity check failed/,
   );
 });
-test("only the exact reviewed additive foundation migration can reach preview", async () => {
+test("only the exact reviewed additive migrations can reach preview", async () => {
   const approved = await read("../../docs/preview-migration.json");
   const files = (
     await readdir(new URL("../../migrations/", import.meta.url))

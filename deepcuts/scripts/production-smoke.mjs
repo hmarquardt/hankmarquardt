@@ -45,6 +45,8 @@ for (const path of [
   "/api/library",
   "/api/session",
   "/api/imports",
+  "/api/playlists",
+  "/api/playlists/missing",
   "/api/state",
   "/api/tracks/missing/audio",
   "/api/albums/missing/artwork",
@@ -88,6 +90,13 @@ assert.ok(
     (await (await check("/api/imports", 200, { headers })).json()).imports,
   ),
 );
+assert.ok(
+  Array.isArray(
+    (await (await check("/api/playlists", 200, { headers })).json()).playlists,
+  ),
+  "Authenticated playlists did not return a list.",
+);
+await check("/api/playlists/missing", 404, { headers });
 await check("/api/state", 200, { headers });
 await check("/api/tracks/missing/audio", 404, { headers });
 await check("/api/logout", 200, {

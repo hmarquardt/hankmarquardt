@@ -19,14 +19,29 @@ export interface Album {
   has_artwork: boolean;
   tracks: Track[];
 }
+export interface PlaylistSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  track_count: number;
+  duration: number;
+}
+export interface Playlist extends PlaylistSummary {
+  tracks: Track[];
+}
 export interface ListeningState {
   queue: string[];
   current: string | null;
   position: number;
   queue_index?: number;
 }
-export const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
+// A streaming R2 write with a streaming SHA-256 check stays inside the Worker's
+// 128 MB memory budget, so 64 MiB is safe. Cloudflare also caps request bodies at
+// 100 MB on the Free and Pro plans. See docs/ARCHITECTURE.md.
+export const MAX_AUDIO_BYTES = 64 * 1024 * 1024;
 export const MAX_ART_BYTES = 5 * 1024 * 1024;
+export const MAX_PLAYLIST_TRACKS = 500;
+export const MAX_PLAYLISTS = 200;
 export async function sha256(value: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", value))]
     .map((b) => b.toString(16).padStart(2, "0"))

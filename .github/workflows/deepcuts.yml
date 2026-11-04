@@ -88,7 +88,7 @@ jobs:
         run: |
           npx wrangler deploy --dry-run --config wrangler.preview.generated.json --no-x-provision --no-x-auto-create
           node scripts/preflight-preview.mjs
-      - name: Require the exact reviewed foundation migration
+      - name: Require the exact reviewed migrations
         # No general remote migration runner: future migrations require a reviewed
         # migration/recovery policy before this check can be changed.
         run: node scripts/check-preview-migration.mjs

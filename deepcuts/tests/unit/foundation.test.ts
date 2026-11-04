@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
-import worker from "../../src/worker/index";
 import { byteRange } from "../../src/shared/range";
 import { formatBytes, formatTime, sha256 } from "../../src/shared/model";
 import {
@@ -16,105 +13,9 @@ import {
   digest,
   sessionCookie,
 } from "../../src/worker/auth";
-import type { Env } from "../../src/worker/env";
+import { authenticate, closeDatabases, environment, origin } from "./support";
 
-const origin = "https://deepcuts.example";
-const databases: DatabaseSync[] = [];
-afterEach(() => {
-  for (const db of databases.splice(0)) db.close();
-});
-function environment() {
-  const sql = new DatabaseSync(":memory:");
-  databases.push(sql);
-  sql.exec(
-    readFileSync(
-      new URL("../../migrations/0001_foundation.sql", import.meta.url),
-      "utf8",
-    ),
-  );
-  const wrap = (query: string, params: unknown[] = []) => ({
-    bind: (...values: unknown[]) => wrap(query, values),
-    first: async () => sql.prepare(query).get(...(params as never[])) ?? null,
-    all: async () => ({
-      results: sql.prepare(query).all(...(params as never[])),
-    }),
-    run: async () => ({
-      meta: {
-        changes: Number(sql.prepare(query).run(...(params as never[])).changes),
-      },
-    }),
-  });
-  const objects = new Map<
-    string,
-    { bytes: ArrayBuffer; options: R2PutOptions }
-  >();
-  const env = {
-    APP_ORIGIN: origin,
-    OWNER_KEY: "a".repeat(64),
-    DEPLOY_REVISION: "unit",
-    DB: {
-      prepare: wrap,
-      batch: async (statements: ReturnType<typeof wrap>[]) => {
-        sql.exec("BEGIN");
-        try {
-          const result = await Promise.all(statements.map((s) => s.run()));
-          sql.exec("COMMIT");
-          return result;
-        } catch (error) {
-          sql.exec("ROLLBACK");
-          throw error;
-        }
-      },
-    },
-    LOGIN_LIMIT: { limit: async () => ({ success: true }) },
-    MUSIC: {
-      put: async (key: string, bytes: ArrayBuffer, options: R2PutOptions) => {
-        if (objects.has(key) && options.onlyIf) return null;
-        objects.set(key, { bytes, options });
-        return {};
-      },
-      get: async (
-        key: string,
-        options?: { range: { offset: number; length: number } },
-      ) => {
-        const row = objects.get(key);
-        if (!row) return null;
-        const bytes = options?.range
-          ? row.bytes.slice(
-              options.range.offset,
-              options.range.offset + options.range.length,
-            )
-          : row.bytes;
-        return { body: bytes, httpMetadata: row.options.httpMetadata };
-      },
-      head: async (key: string) => {
-        const row = objects.get(key);
-        return (
-          row && {
-            size: row.bytes.byteLength,
-            customMetadata: row.options.customMetadata,
-          }
-        );
-      },
-    },
-    ASSETS: {
-      fetch: async () =>
-        new Response("shell", { headers: { "Content-Type": "text/html" } }),
-    },
-  } as unknown as Env;
-  const request = (path: string, init: RequestInit = {}) =>
-    worker.fetch(new Request(`${origin}${path}`, init), env);
-  return { env, sql, request, objects };
-}
-async function authenticate(ctx: ReturnType<typeof environment>) {
-  const response = await ctx.request("/api/login", {
-    method: "POST",
-    headers: { Origin: origin, "Content-Type": "application/json" },
-    body: JSON.stringify({ key: ctx.env.OWNER_KEY }),
-  });
-  expect(response.status).toBe(200);
-  return response.headers.get("Set-Cookie")!.split(";")[0];
-}
+afterEach(closeDatabases);
 
 describe("byte ranges", () => {
   it.each([
@@ -322,16 +223,42 @@ describe("private Worker", () => {
       });
     expect((await finish()).status).toBe(409);
     const path = `/api/imports/${result.id}/tracks/${result.tracks[0].id}`;
+    // Browsers send Content-Length with a File body; Node's Request does not add
+    // it, so the tests declare it exactly like the wire does.
+    const uploadHeaders = {
+      ...headers,
+      "Content-Length": String(bytes.length),
+    };
     expect(
-      (await ctx.request(path, { method: "PUT", headers, body: "broken" }))
-        .status,
+      (await ctx.request(path, { method: "PUT", headers, body: bytes })).status,
+    ).toBe(411);
+    expect(
+      (
+        await ctx.request(path, {
+          method: "PUT",
+          headers: { ...uploadHeaders, "Content-Length": "6" },
+          body: "broken",
+        })
+      ).status,
     ).toBe(422);
     expect(ctx.objects.size).toBe(0);
     expect(
-      (await ctx.request(path, { method: "PUT", headers, body: bytes })).status,
+      (
+        await ctx.request(path, {
+          method: "PUT",
+          headers: uploadHeaders,
+          body: bytes,
+        })
+      ).status,
     ).toBe(200);
     expect(
-      (await ctx.request(path, { method: "PUT", headers, body: bytes })).status,
+      (
+        await ctx.request(path, {
+          method: "PUT",
+          headers: uploadHeaders,
+          body: bytes,
+        })
+      ).status,
     ).toBe(200);
     expect(ctx.objects.size).toBe(1);
     expect((await finish()).status).toBe(200);

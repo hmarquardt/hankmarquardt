@@ -102,13 +102,26 @@ retain the access key in a password manager. It is never printed, included in
 assets, committed, or recorded in browser screenshots/traces. Do not reuse the
 local development key. Rotating this secret invalidates all existing sessions.
 
-The reviewed first migration only creates the foundation tables. Verify its hash
-with `node scripts/check-preview-migration.mjs` (the content check is shared with
-preview), then apply it to **this dedicated database only**. Future migrations
-require a new review and a recovery plan. D1 Time Travel is platform recovery;
-scheduled exports, independent R2 backup and a verified restore remain follow-up
-work. Keep another copy of all originals; this first release is a listening
-interface, not yet the sole archival home for the collection.
+The reviewed migration set is additive. `0001_foundation.sql` creates the
+foundation tables; `0002_playlists.sql` only adds a unique
+`(playlist_id, track_id)` index, a track lookup index and a created-at index to
+the playlist tables that already exist. Verify both hashes with
+`node scripts/check-preview-migration.mjs` (the content check is shared with
+preview), then apply them to **this dedicated database only**:
+
+```sh
+npx wrangler d1 migrations apply DB --remote --config wrangler.production.json \
+  --no-x-provision --no-x-auto-create
+```
+
+Wrangler applies only pending migrations, so existing albums, tracks, playlists,
+sessions and listening state are preserved; the playlist index creation is additive
+and cannot touch rows. Because `0002` is index-only, an older Worker can still read
+and write the schema after a rollback. Any future migration requires a new review
+and a recovery plan. D1 Time Travel is platform recovery; scheduled exports,
+independent R2 backup and a verified restore remain follow-up work. Keep another
+copy of all originals; this release is a listening interface, not yet the sole
+archival home for the collection.
 
 For an explicitly authorized release, from a clean committed release branch:
 

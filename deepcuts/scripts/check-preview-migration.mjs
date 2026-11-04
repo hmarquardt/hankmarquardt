@@ -19,4 +19,4 @@ for (const file of files) {
       "Preview migration content changed. Explicit review is required.",
     );
 }
-console.log("Preview migration matches the reviewed additive foundation.");
+console.log("Migrations match the reviewed additive set.");

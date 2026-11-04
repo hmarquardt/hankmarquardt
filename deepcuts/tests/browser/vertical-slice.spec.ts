@@ -16,6 +16,8 @@ test("API and byte streams stay private; cross-origin mutations fail closed", as
   for (const endpoint of [
     "/api/library",
     "/api/imports",
+    "/api/playlists",
+    "/api/playlists/example",
     "/api/state",
     "/api/tracks/example/audio",
     "/api/albums/example/artwork",

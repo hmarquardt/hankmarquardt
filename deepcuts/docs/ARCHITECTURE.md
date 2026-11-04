@@ -65,10 +65,10 @@ the generated local key. Secret rotation is the initial recovery mechanism.
 
 The browser parses tags with the maintained `music-metadata` package and hashes
 one original at a time. The album and track manifest is validated server-side;
-track bodies are size bounded, signature checked and hashed again before storage.
-Metadata reflects what the owner imports and can be overridden at import. The
-server does not reparse all tags or prove that a bitstream decodes; browser tests
-use real generated files to cover decoding.
+track bodies are length checked, signature checked, hashed again while streaming
+and only then committed to R2. Metadata reflects what the owner imports and can
+be overridden at import. The server does not reparse all tags or prove that a
+bitstream decodes; browser tests use real generated files to cover decoding.
 
 An import starts as `staging`. Each track has a UUID, expected size and SHA-256,
 plus a server-assigned R2 object key. Conditional writes prevent replacement of an
@@ -80,13 +80,68 @@ write leaves a hidden object, and retry repairs the uploaded marker. Abandoning 
 import retains its original objects for review. No destructive cloud cleanup or
 committed-library deletion endpoint exists.
 
-MVP limits: one album, at most 100 tracks, **32 MiB per track**, artwork up to 5 MiB
-in JPEG/PNG. Originals are never converted, renamed in content, or transcoded.
-The track-size bound keeps body buffering and SHA-256 memory within a Worker
-budget. Large/high-resolution FLAC albums need multipart/resumable streaming
-uploads and incremental hashing in a later milestone. Imported filenames are
-metadata only and cannot choose storage keys or paths. SVG artwork is rejected.
-Reimporting creates another album; deduplication and resume UI are future work.
+Tracks stream from the request straight into R2 through a verifying transform, so
+memory stays flat instead of growing with the file. The transform counts bytes,
+checks the MP3/FLAC/MP4 signature from the first bytes, hashes incrementally with
+`node:crypto` and errors the stream before R2 commits when the digest, length or
+container does not match. A `FixedLengthStream` supplies R2 with the exact object
+length. The server requires an exact `Content-Length` (HTTP 411 otherwise) because
+a fixed-length R2 write depends on it. A repeated upload never rewrites an object;
+it re-verifies the retried body and compares the stored size and digest metadata.
+
+Current limits: one album, at most 100 tracks, **64 MiB per track**, artwork up to
+5 MiB in JPEG/PNG. Originals are never converted, renamed in content, or
+transcoded. 64 MiB is the largest single `put()` this Worker can stream safely
+inside the 128 MB memory budget while also hashing; the Cloudflare Free/Pro plan
+caps any request body at 100 MB, so 64 MiB leaves headroom and satisfies the
+common purchased-album case. The client still computes each digest with Web Crypto,
+which needs one whole `ArrayBuffer` per file; browsers hold that without issue, but
+physical mobile memory was not measured. Large/high-resolution FLAC and slow
+connections need a resumable design: multipart R2 uploads (5 MiB–5 GiB parts,
+10,000 parts), per-part `uploadId` state in D1, per-part SHA-256 verification, a
+client-generated idempotency key, resume UI and a lifecycle rule for abandoned
+multipart uploads. That work is deferred; the current single-request path restarts
+from the beginning when interrupted. Imported filenames are metadata only and
+cannot choose storage keys or paths. SVG artwork is rejected. Reimporting creates
+another album; deduplication and resume UI are future work.
+
+## Playlists
+
+Playlists reference existing track ids; no audio is copied, and deleting or
+editing a playlist never touches an album, track or R2 object. The foundation
+migration already created `playlists` and `playlist_tracks`; the additive
+`0002_playlists.sql` adds a unique `(playlist_id, track_id)` index (one instance of
+a track per playlist), a track lookup index and a created-at index. Ordering lives
+in `playlist_tracks.position`, addressed as 0..n-1. Reordering rewrites the whole
+order inside one D1 batch, first offsetting every position so the composite primary
+key cannot collide. Removal compacts the remaining positions the same way.
+
+The playlist API is authenticated by the same owner session and same-origin checks
+as every other mutation. It exposes list, create, rename, delete, add, remove and a
+full-order reorder. Adds require a UUID that belongs to a completed import; unknown
+or still-staging tracks are rejected with 404 so a playlist cannot reference hidden
+audio. Reorder requests must be a permutation of the current membership, which
+makes a stale editor fail instead of silently dropping or duplicating tracks.
+
+The interface adds a playlists view, a mobile-first editor with per-track move and
+remove controls, an "add to playlist" action on every album track, and a picker
+that searches the whole library. Play and shuffle reuse the single global player
+and existing queue; "add to queue" appends the playlist's tracks in order.
+
+## Downloaded playlists
+
+A playlist download reuses the existing IndexedDB model: one `files` store keyed by
+track id, one `albums` store for album downloads, one `playlists` store added by a
+versioned upgrade, and one settings store. Downloading a playlist fetches only
+tracks whose size and digest are not already stored, so audio shared with a
+downloaded album (or another playlist) is written once. A completion record is
+written last, so an interrupted playlist never appears available. Removing a
+playlist or album only deletes files that no remaining downloaded collection
+references, which keeps another collection's offline copy intact. The playlist
+record carries the full track metadata needed to play and render while offline,
+including after a cold PWA reload. Device storage reporting counts unique track
+bytes across albums and playlists plus album artwork, instead of double-counting
+shared tracks.
 
 ## Online and offline audio
 

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -10,18 +11,46 @@ import { Icon, type IconName } from "./icons";
 import {
   clearDevice,
   downloadAlbum,
+  downloadPlaylist,
   downloads,
+  playlistDownloads,
   recoverDownloads,
   removeDownload,
+  removePlaylistDownload,
   verifyDownload,
+  verifyPlaylistDownload,
   type Download,
+  type PlaylistDownload,
 } from "./offline";
 import { importAlbum } from "./importer";
 import { usePlayer } from "./player";
 import { useDialogFocus } from "./useDialogFocus";
-import { formatBytes, formatTime, type Album } from "../shared/model";
+import {
+  AddToPlaylistDialog,
+  ConfirmDialog,
+  DownloadedPlaylists,
+  PlaylistCard,
+  PlaylistDetail,
+  PlaylistTitleDialog,
+  TrackPickerDialog,
+} from "./playlists";
+import {
+  formatBytes,
+  formatTime,
+  type Album,
+  type Playlist,
+  type PlaylistSummary,
+  type Track,
+} from "../shared/model";
+import {
+  playlistDuration,
+  sameTracks,
+  shuffle,
+  totalTrackBytes,
+  uniqueTracks,
+} from "../shared/playlists";
 
-type View = "library" | "downloads" | "search";
+type View = "library" | "playlists" | "downloads" | "search";
 function Cover({
   album,
   artwork,
@@ -78,6 +107,12 @@ function Button({
 export function App() {
   const [library, setLibrary] = useState<Album[]>([]);
   const [saved, setSaved] = useState<Download[]>([]);
+  const [playlistRecords, setPlaylistRecords] = useState<PlaylistDownload[]>(
+    [],
+  );
+  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
+  const [playlistId, setPlaylistId] = useState<string | null>(null);
+  const [openedPlaylist, setOpenedPlaylist] = useState<Playlist | null>(null);
   const [art, setArt] = useState<Record<string, string>>({});
   const [authenticated, setAuthenticated] = useState(false);
   const [ready, setReady] = useState(false);
@@ -90,6 +125,20 @@ export function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [playerOpen, setPlayerOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingTrack, setPendingTrack] = useState<Track | null>(null);
+  const dialogOpen =
+    importOpen ||
+    loginOpen ||
+    playerOpen ||
+    createOpen ||
+    renameOpen ||
+    deleteOpen ||
+    pickerOpen ||
+    pendingTrack !== null;
   const dialogRef = useDialogFocus(importOpen || loginOpen || playerOpen);
   const [storage, setStorage] = useState<{
     usage?: number;
@@ -104,22 +153,35 @@ export function App() {
     clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(""), 9000);
   }, []);
-  const player = usePlayer(library, authenticated, notify);
+  const playlistTrackPool = useMemo(
+    () => playlistRecords.flatMap((record) => record.playlist.tracks),
+    [playlistRecords],
+  );
+  const player = usePlayer(library, playlistTrackPool, authenticated, notify);
   const savedIds = new Set(saved.map((d) => d.album.id));
+  const downloadedPlaylistIds = new Set(
+    playlistRecords.map((record) => record.playlist.id),
+  );
 
   const refreshDownloads = useCallback(async () => {
     setSaved(await downloads());
+    setPlaylistRecords(await playlistDownloads());
     const estimate = await navigator.storage?.estimate();
     setStorage({
       ...estimate,
       persisted: await navigator.storage?.persisted?.(),
     });
   }, []);
+  const refreshPlaylists = useCallback(async () => {
+    const response = await api<{ playlists: PlaylistSummary[] }>("/playlists");
+    setPlaylists(response.playlists);
+  }, []);
   const refreshLibrary = useCallback(async () => {
     const response = await api<{ albums: Album[] }>("/library");
     setLibrary(response.albums);
     setAuthenticated(true);
-  }, []);
+    await refreshPlaylists();
+  }, [refreshPlaylists]);
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -176,18 +238,53 @@ export function App() {
     const handle = () => {
       const hash = location.hash.slice(1);
       if (hash.startsWith("album/")) {
+        setPlaylistId(null);
         setSelected(library.find((a) => a.id === hash.slice(6)) ?? null);
         return;
       }
+      if (hash.startsWith("playlist/")) {
+        setSelected(null);
+        setView("playlists");
+        setPlaylistId(hash.slice(9));
+        return;
+      }
       setSelected(null);
+      setPlaylistId(null);
       setView(
-        ["downloads", "search"].includes(hash) ? (hash as View) : "library",
+        ["downloads", "search", "playlists"].includes(hash)
+          ? (hash as View)
+          : "library",
       );
     };
     handle();
     window.addEventListener("hashchange", handle);
     return () => window.removeEventListener("hashchange", handle);
   }, [library]);
+  useEffect(() => {
+    if (!playlistId) {
+      setOpenedPlaylist(null);
+      return;
+    }
+    const local =
+      playlistRecords.find((record) => record.playlist.id === playlistId)
+        ?.playlist ?? null;
+    if (!authenticated || !online) {
+      setOpenedPlaylist(local);
+      return;
+    }
+    let active = true;
+    void api<{ playlist: Playlist }>(`/playlists/${playlistId}`)
+      .then((response) => {
+        if (active) setOpenedPlaylist(response.playlist);
+      })
+      .catch(() => {
+        // A playlist that only exists on this device still opens offline.
+        if (active) setOpenedPlaylist(local);
+      });
+    return () => {
+      active = false;
+    };
+  }, [playlistId, authenticated, online, playlistRecords]);
   useEffect(() => {
     if (!("mediaSession" in navigator) || !player.currentTrack) return;
     const album = player.currentAlbum;
@@ -253,6 +350,10 @@ export function App() {
       setAuthenticated(false);
       setSaved([]);
       setLibrary([]);
+      setPlaylists([]);
+      setPlaylistRecords([]);
+      setPlaylistId(null);
+      setOpenedPlaylist(null);
       setSelected(null);
       location.hash = "";
     }, "Removing this device’s downloads…");
@@ -263,6 +364,154 @@ export function App() {
       await refreshDownloads();
       notify("Album downloaded and verified. Ready when you are.");
     }, "Preparing download…");
+  }
+  function showPlaylist(id: string) {
+    location.hash = `playlist/${id}`;
+    setPlaylistId(id);
+  }
+  async function createPlaylist(title: string) {
+    await run(async () => {
+      const created = await api<{ playlist: PlaylistSummary }>(
+        "/playlists",
+        jsonOptions("POST", { title }),
+      );
+      await refreshPlaylists();
+      setCreateOpen(false);
+      showPlaylist(created.playlist.id);
+      notify(`“${created.playlist.title}” is ready for tracks.`);
+    }, "Creating playlist…");
+  }
+  async function createPlaylistWithTrack(title: string) {
+    const track = pendingTrack;
+    if (!track) return;
+    await run(async () => {
+      const created = await api<{ playlist: PlaylistSummary }>(
+        "/playlists",
+        jsonOptions("POST", { title }),
+      );
+      await api(
+        `/playlists/${created.playlist.id}/tracks`,
+        jsonOptions("POST", { track_id: track.id }),
+      );
+      await refreshPlaylists();
+      setPendingTrack(null);
+      notify(`Added “${track.title}” to “${created.playlist.title}”.`);
+    }, "Adding to playlist…");
+  }
+  async function addToPlaylist(id: string, track: Track) {
+    await run(async () => {
+      await api(
+        `/playlists/${id}/tracks`,
+        jsonOptions("POST", { track_id: track.id }),
+      );
+      await refreshPlaylists();
+      setOpenedPlaylist((current) =>
+        current && current.id === id
+          ? {
+              ...current,
+              tracks: [...current.tracks, track],
+              track_count: current.tracks.length + 1,
+              duration: current.duration + track.duration,
+            }
+          : current,
+      );
+      setPendingTrack(null);
+      notify(`Added “${track.title}”.`);
+    }, "Adding to playlist…");
+  }
+  async function renamePlaylist(title: string) {
+    if (!openedPlaylist) return;
+    await run(async () => {
+      await api(
+        `/playlists/${openedPlaylist.id}`,
+        jsonOptions("PATCH", { title }),
+      );
+      setOpenedPlaylist({ ...openedPlaylist, title });
+      await refreshPlaylists();
+      setRenameOpen(false);
+      notify("Playlist renamed.");
+    }, "Saving name…");
+  }
+  async function deletePlaylist() {
+    const playlist = openedPlaylist;
+    if (!playlist) return;
+    await run(async () => {
+      await api(`/playlists/${playlist.id}`, { method: "DELETE" });
+      // A deleted playlist should not linger as an offline collection, but its
+      // files stay if any album or other playlist still needs them.
+      if (downloadedPlaylistIds.has(playlist.id))
+        await removePlaylistDownload(playlist);
+      await Promise.all([refreshPlaylists(), refreshDownloads()]);
+      setDeleteOpen(false);
+      setOpenedPlaylist(null);
+      setPlaylistId(null);
+      location.hash = "playlists";
+      notify("Playlist deleted. Your music is untouched.");
+    }, "Deleting playlist…");
+  }
+  async function removeTrackFromPlaylist(track: Track) {
+    const playlist = openedPlaylist;
+    if (!playlist) return;
+    await run(async () => {
+      await api(`/playlists/${playlist.id}/tracks/${track.id}`, {
+        method: "DELETE",
+      });
+      const tracks = playlist.tracks.filter((item) => item.id !== track.id);
+      setOpenedPlaylist({
+        ...playlist,
+        tracks,
+        track_count: tracks.length,
+        duration: playlistDuration(tracks),
+      });
+      await refreshPlaylists();
+      notify(`Removed “${track.title}”. Your music is untouched.`);
+    }, "Updating playlist…");
+  }
+  async function movePlaylistTrack(track: Track, direction: -1 | 1) {
+    const playlist = openedPlaylist;
+    if (!playlist) return;
+    const index = playlist.tracks.findIndex((item) => item.id === track.id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= playlist.tracks.length) return;
+    const tracks = playlist.tracks.slice();
+    [tracks[index], tracks[target]] = [tracks[target], tracks[index]];
+    setOpenedPlaylist({ ...playlist, tracks });
+    await run(async () => {
+      try {
+        await api(
+          `/playlists/${playlist.id}/tracks`,
+          jsonOptions("PUT", { track_ids: tracks.map((item) => item.id) }),
+        );
+      } catch (error) {
+        setOpenedPlaylist(playlist);
+        throw error;
+      }
+    }, "Saving order…");
+  }
+  async function savePlaylist(playlist: Playlist) {
+    await run(async () => {
+      await downloadPlaylist(playlist, setBusy);
+      await refreshDownloads();
+      notify("Playlist downloaded and verified. Ready when you are.");
+    }, "Preparing playlist download…");
+  }
+  async function checkPlaylistDownload(playlist: Playlist) {
+    await run(async () => {
+      await verifyPlaylistDownload(playlist);
+      notify("Every playlist track verified. Your originals are intact.");
+    }, "Checking downloaded playlist…");
+  }
+  async function removePlaylistFromDevice(playlist: Playlist) {
+    await run(async () => {
+      await removePlaylistDownload(playlist);
+      await refreshDownloads();
+      if (!authenticated) {
+        setOpenedPlaylist(null);
+        setPlaylistId(null);
+        location.hash = "playlists";
+      }
+      notify("Playlist download removed from this device.");
+    }, "Removing playlist download…");
   }
   async function submitImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -286,6 +535,8 @@ export function App() {
   const navigate = (next: View) => {
     location.hash = next;
     setSelected(null);
+    setPlaylistId(null);
+    setOpenedPlaylist(null);
     setView(next);
   };
   const showAlbum = (album: Album) => {
@@ -301,14 +552,34 @@ export function App() {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
-  const signedOut = ready && !authenticated && !saved.length;
-  const totalBytes = saved.reduce(
-    (sum, d) =>
-      sum +
-      d.album.tracks.reduce((s, t) => s + t.bytes, 0) +
-      (d.artwork?.size ?? 0),
-    0,
+  const visiblePlaylists = useMemo<PlaylistSummary[]>(
+    () =>
+      authenticated && online
+        ? playlists
+        : playlistRecords.map(({ playlist }) => ({
+            ...playlist,
+            track_count: playlist.tracks.length,
+            duration: playlistDuration(playlist.tracks),
+          })),
+    [authenticated, online, playlists, playlistRecords],
   );
+  const albumTitles = useMemo(
+    () => Object.fromEntries(library.map((album) => [album.id, album.title])),
+    [library],
+  );
+  const localTracks = useMemo(
+    () =>
+      uniqueTracks(
+        ...saved.map((download) => download.album.tracks),
+        ...playlistRecords.map((record) => record.playlist.tracks),
+      ),
+    [saved, playlistRecords],
+  );
+  const signedOut =
+    ready && !authenticated && !saved.length && !playlistRecords.length;
+  const totalBytes =
+    totalTrackBytes(localTracks) +
+    saved.reduce((sum, download) => sum + (download.artwork?.size ?? 0), 0);
   const loginForm = (
     <form onSubmit={signIn} className="login-form">
       <label htmlFor="owner-key">Your access key</label>
@@ -380,7 +651,7 @@ export function App() {
               <div className="empty">
                 <Icon name="download" />
                 <h2>No downloads on this device yet.</h2>
-                <p>Connect and sign in to download your first album.</p>
+                <p>Connect and sign in to download an album or playlist.</p>
               </div>
             )}
             <span className="welcome-foot">
@@ -391,7 +662,7 @@ export function App() {
       ) : (
         <div
           className={`app ${player.currentTrack ? "has-player" : ""}`}
-          inert={importOpen || loginOpen || playerOpen}
+          inert={dialogOpen}
         >
           <aside className="sidebar">
             <a className="brand" href="#library">
@@ -402,20 +673,30 @@ export function App() {
               {(
                 [
                   ["library", "library", "Library"],
+                  ["playlists", "playlist", "Playlists"],
                   ["search", "search", "Search"],
                   ["downloads", "download", "Downloads"],
                 ] as const
               ).map(([key, icon, label]) => (
                 <a
                   key={key}
-                  className={view === key && !selected ? "active" : ""}
+                  className={
+                    view === key && !selected && !playlistId ? "active" : ""
+                  }
                   href={`#${key}`}
-                  aria-current={view === key && !selected ? "page" : undefined}
+                  aria-current={
+                    view === key && !selected && !playlistId
+                      ? "page"
+                      : undefined
+                  }
                   onClick={() => navigate(key)}
                 >
                   <Icon name={icon} />
                   <span>{label}</span>
                   {key === "downloads" && <small>{saved.length}</small>}
+                  {key === "playlists" && visiblePlaylists.length > 0 && (
+                    <small>{visiblePlaylists.length}</small>
+                  )}
                 </a>
               ))}
             </nav>
@@ -482,7 +763,64 @@ export function App() {
                     downloaded records are right here.
                   </div>
                 )}
-                {selected ? (
+                {playlistId ? (
+                  openedPlaylist ? (
+                    <PlaylistDetail
+                      playlist={openedPlaylist}
+                      albumTitles={albumTitles}
+                      downloaded={downloadedPlaylistIds.has(openedPlaylist.id)}
+                      outdated={
+                        downloadedPlaylistIds.has(openedPlaylist.id) &&
+                        !sameTracks(
+                          playlistRecords.find(
+                            (record) =>
+                              record.playlist.id === openedPlaylist.id,
+                          )?.playlist.tracks ?? [],
+                          openedPlaylist.tracks,
+                        )
+                      }
+                      authenticated={authenticated}
+                      online={online}
+                      busy={busy}
+                      currentTrackId={player.current}
+                      playing={player.playing}
+                      onBack={() => navigate("playlists")}
+                      onPlay={(index) =>
+                        player.playTracks(openedPlaylist.tracks, index)
+                      }
+                      onShuffle={() =>
+                        player.playTracks(shuffle(openedPlaylist.tracks))
+                      }
+                      onQueue={() =>
+                        player.enqueueTracks(openedPlaylist.tracks)
+                      }
+                      onRename={() => setRenameOpen(true)}
+                      onDelete={() => setDeleteOpen(true)}
+                      onAddTracks={() => setPickerOpen(true)}
+                      onRemoveTrack={(track) => {
+                        void removeTrackFromPlaylist(track);
+                      }}
+                      onMoveTrack={(track, direction) => {
+                        void movePlaylistTrack(track, direction);
+                      }}
+                      onDownload={() => {
+                        void savePlaylist(openedPlaylist);
+                      }}
+                    />
+                  ) : (
+                    <div className="empty" role="status">
+                      <Icon name="playlist" size={48} />
+                      <h2>That playlist is not on this device.</h2>
+                      <p>
+                        Reconnect and sign in to open it, or download it next
+                        time you have a connection.
+                      </p>
+                      <Button onClick={() => navigate("playlists")}>
+                        Back to playlists
+                      </Button>
+                    </div>
+                  )
+                ) : selected ? (
                   <>
                     <Button
                       className="text-button back-button"
@@ -582,6 +920,13 @@ export function App() {
                             {formatTime(track.duration)}
                           </span>
                           <Button
+                            icon="playlist"
+                            className="icon-button"
+                            label={`Add ${track.title} to a playlist`}
+                            disabled={!authenticated || !online || !!busy}
+                            onClick={() => setPendingTrack(track)}
+                          />
+                          <Button
                             icon="plus"
                             className="icon-button"
                             label={`Add ${track.title} to queue`}
@@ -604,25 +949,34 @@ export function App() {
                             ? "TAKE THE GOOD STUFF WITH YOU"
                             : view === "search"
                               ? "FIND YOUR NEXT REPEAT"
-                              : "OWNED. LOVED. ON REPEAT."}
+                              : view === "playlists"
+                                ? "YOUR OWN RUNNING ORDER"
+                                : "OWNED. LOVED. ON REPEAT."}
                         </p>
                         <h1>
                           {view === "downloads"
                             ? "Made for offline."
                             : view === "search"
                               ? "Something in mind?"
-                              : "Your collection."}
+                              : view === "playlists"
+                                ? "Playlists."
+                                : "Your collection."}
                         </h1>
                         <p>
                           {view === "downloads"
                             ? "No signal required. Just press play."
                             : view === "search"
                               ? "An album, an artist, that one song."
-                              : "A home for the records that feel like you."}
+                              : view === "playlists"
+                                ? "Any track, any album, in exactly your order."
+                                : "A home for the records that feel like you."}
                         </p>
                       </div>
                       <div className="heading-record" aria-hidden="true">
-                        <Icon name="record" size={82} />
+                        <Icon
+                          name={view === "playlists" ? "playlist" : "record"}
+                          size={82}
+                        />
                       </div>
                     </section>
                     {view === "search" && (
@@ -648,6 +1002,11 @@ export function App() {
                           <p>
                             {saved.length}{" "}
                             {saved.length === 1 ? "album" : "albums"} ·{" "}
+                            {playlistRecords.length}{" "}
+                            {playlistRecords.length === 1
+                              ? "playlist"
+                              : "playlists"}{" "}
+                            ·{" "}
                             {storage.persisted
                               ? "Persistent storage granted"
                               : "Browser storage · may be cleared by your browser"}
@@ -666,22 +1025,93 @@ export function App() {
                         </div>
                       </section>
                     )}
+                    {view === "downloads" && (
+                      <DownloadedPlaylists
+                        playlists={playlistRecords.map(
+                          (record) => record.playlist,
+                        )}
+                        busy={busy}
+                        onOpen={showPlaylist}
+                        onPlay={(playlist) =>
+                          player.playTracks(playlist.tracks)
+                        }
+                        onVerify={(playlist) => {
+                          void checkPlaylistDownload(playlist);
+                        }}
+                        onRemove={(playlist) => {
+                          void removePlaylistFromDevice(playlist);
+                        }}
+                      />
+                    )}
                     <div className="section-heading">
                       <h2>
                         {view === "downloads"
                           ? "Ready to go"
                           : view === "search"
                             ? "In your collection"
-                            : "On your shelf"}{" "}
-                        <span>{visible.length}</span>
+                            : view === "playlists"
+                              ? "Your playlists"
+                              : "On your shelf"}{" "}
+                        <span>
+                          {view === "playlists"
+                            ? visiblePlaylists.length
+                            : visible.length}
+                        </span>
                       </h2>
                       {view === "library" && (
                         <span className="shelf-caption">
                           ALBUMS, FIRST. ALWAYS.
                         </span>
                       )}
+                      {view === "playlists" && (
+                        <button
+                          type="button"
+                          className="button subtle"
+                          onClick={() => setCreateOpen(true)}
+                          disabled={!authenticated || !online || !!busy}
+                        >
+                          <Icon name="plus" size={16} />
+                          New playlist
+                        </button>
+                      )}
                     </div>
-                    {visible.length ? (
+                    {view === "playlists" ? (
+                      visiblePlaylists.length ? (
+                        <div className="album-grid">
+                          {visiblePlaylists.map((playlist) => (
+                            <PlaylistCard
+                              key={playlist.id}
+                              playlist={playlist}
+                              downloaded={downloadedPlaylistIds.has(
+                                playlist.id,
+                              )}
+                              onOpen={showPlaylist}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <section className="empty-shelf">
+                          <div className="empty-record" aria-hidden="true">
+                            <Icon name="playlist" size={54} />
+                          </div>
+                          <p className="eyebrow">MIX IT YOUR WAY</p>
+                          <h2>Your first playlist starts here.</h2>
+                          <p>
+                            {authenticated
+                              ? "Pull tracks from any album into one running order. Your originals are never copied or moved."
+                              : "Playlists you download appear here. Reconnect and sign in to build a new one."}
+                          </p>
+                          <Button
+                            icon="plus"
+                            className="primary"
+                            onClick={() => setCreateOpen(true)}
+                            disabled={!online || !authenticated || !!busy}
+                          >
+                            Create a playlist
+                          </Button>
+                        </section>
+                      )
+                    ) : visible.length ? (
                       <div className="album-grid">
                         {visible.map((album) => (
                           <article className="album-card" key={album.id}>
@@ -813,6 +1243,7 @@ export function App() {
             {(
               [
                 ["library", "library", "Library"],
+                ["playlists", "playlist", "Playlists"],
                 ["search", "search", "Search"],
                 ["downloads", "download", "Downloads"],
               ] as const
@@ -820,7 +1251,9 @@ export function App() {
               <a
                 key={key}
                 href={`#${key}`}
-                className={view === key ? "active" : ""}
+                className={
+                  view === key && !selected && !playlistId ? "active" : ""
+                }
                 onClick={() => navigate(key)}
               >
                 <Icon name={icon} />
@@ -1091,6 +1524,64 @@ export function App() {
             )}
           </section>
         </div>
+      )}
+      {createOpen && (
+        <PlaylistTitleDialog
+          mode="create"
+          busy={busy}
+          onSubmit={(title) => {
+            void createPlaylist(title);
+          }}
+          onClose={() => setCreateOpen(false)}
+        />
+      )}
+      {renameOpen && openedPlaylist && (
+        <PlaylistTitleDialog
+          mode="rename"
+          initial={openedPlaylist.title}
+          busy={busy}
+          onSubmit={(title) => {
+            void renamePlaylist(title);
+          }}
+          onClose={() => setRenameOpen(false)}
+        />
+      )}
+      {deleteOpen && openedPlaylist && (
+        <ConfirmDialog
+          title={`Delete “${openedPlaylist.title}”?`}
+          body="The playlist is removed from your account and this device. The tracks, albums and original audio files stay exactly where they are."
+          confirmLabel="Delete playlist"
+          busy={busy}
+          onConfirm={() => {
+            void deletePlaylist();
+          }}
+          onClose={() => setDeleteOpen(false)}
+        />
+      )}
+      {pickerOpen && openedPlaylist && (
+        <TrackPickerDialog
+          albums={library}
+          existing={openedPlaylist.tracks.map((track) => track.id)}
+          busy={busy}
+          onAdd={(track) => {
+            void addToPlaylist(openedPlaylist.id, track);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+      {pendingTrack && (
+        <AddToPlaylistDialog
+          track={pendingTrack}
+          playlists={visiblePlaylists}
+          busy={busy}
+          onAdd={(id) => {
+            void addToPlaylist(id, pendingTrack);
+          }}
+          onCreate={(title) => {
+            void createPlaylistWithTrack(title);
+          }}
+          onClose={() => setPendingTrack(null)}
+        />
       )}
       {busy && (
         <div className="busy-banner" role="status">

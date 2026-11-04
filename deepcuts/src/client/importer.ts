@@ -1,5 +1,10 @@
 import { api, jsonOptions } from "./api";
-import { MAX_ART_BYTES, MAX_AUDIO_BYTES, sha256 } from "../shared/model";
+import {
+  MAX_ART_BYTES,
+  MAX_AUDIO_BYTES,
+  formatBytes,
+  sha256,
+} from "../shared/model";
 
 export async function importAlbum(
   files: File[],
@@ -15,7 +20,7 @@ export async function importAlbum(
   if (audio.length > 100) throw new Error("Import up to 100 tracks at a time.");
   if (audio.some((f) => f.size > MAX_AUDIO_BYTES))
     throw new Error(
-      "The MVP supports tracks up to 32 MiB. Your originals have not been changed.",
+      `Tracks are limited to ${formatBytes(MAX_AUDIO_BYTES)} each. Your originals have not been changed.`,
     );
   const { parseBlob, selectCover } = await import("music-metadata");
   let cover: Blob | null = null;

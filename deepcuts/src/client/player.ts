@@ -5,6 +5,7 @@ import { api, jsonOptions } from "./api";
 
 export function usePlayer(
   albums: Album[],
+  extraTracks: Track[],
   authenticated: boolean,
   notify: (text: string) => void,
 ) {
@@ -15,11 +16,14 @@ export function usePlayer(
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
-  const tracks = useMemo(
-    () =>
-      new Map(albums.flatMap((a) => a.tracks.map((t) => [t.id, t] as const))),
-    [albums],
-  );
+  const tracks = useMemo(() => {
+    const index = new Map<string, Track>();
+    for (const album of albums)
+      for (const track of album.tracks) index.set(track.id, track);
+    // Downloaded playlist tracks may belong to albums that are not downloaded.
+    for (const track of extraTracks) index.set(track.id, track);
+    return index;
+  }, [albums, extraTracks]);
   const currentTrack = current ? tracks.get(current) : undefined;
   const currentAlbum = albums.find((a) => a.id === currentTrack?.album_id);
   const requestPlay = useRef(false);
@@ -289,6 +293,13 @@ export function usePlayer(
     enqueue: (track: Track) => {
       setQueue((q) => [...q, track.id]);
       notifyRef.current("Added to your queue.");
+    },
+    enqueueTracks: (list: readonly Track[]) => {
+      if (!list.length) return;
+      setQueue((q) => [...q, ...list.map((track) => track.id)]);
+      notifyRef.current(
+        `Added ${list.length} ${list.length === 1 ? "track" : "tracks"} to your queue.`,
+      );
     },
     removeQueue: (index: number) => {
       if (index !== queueIndex) {

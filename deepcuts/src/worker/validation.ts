@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { HTTPException } from "hono/http-exception";
-import { MAX_AUDIO_BYTES } from "../shared/model";
+import { createHash } from "node:crypto";
+import { MAX_AUDIO_BYTES, MAX_PLAYLIST_TRACKS } from "../shared/model";
 
 const text = z.string().trim().min(1).max(300);
 export const importSchema = z
@@ -43,6 +44,22 @@ export const stateSchema = z
     current: z.string().uuid().nullable(),
     position: z.number().finite().min(0).max(86400),
     queue_index: z.number().int().min(0).max(999).optional(),
+  })
+  .strict();
+export const playlistTitle = z.string().trim().min(1).max(120);
+export const playlistCreateSchema = z.object({ title: playlistTitle }).strict();
+export const playlistRenameSchema = z.object({ title: playlistTitle }).strict();
+export const playlistTrackSchema = z
+  .object({ track_id: z.string().uuid() })
+  .strict();
+export const playlistOrderSchema = z
+  .object({
+    track_ids: z
+      .array(z.string().uuid())
+      .max(MAX_PLAYLIST_TRACKS)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "A track can only appear once in a playlist.",
+      }),
   })
   .strict();
 
@@ -115,4 +132,151 @@ export function artworkMime(data: ArrayBuffer): string | null {
   if ([137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => b[i] === v))
     return "image/png";
   return null;
+}
+
+/** Strict Content-Length parsing. Null means missing, chunked, or malformed. */
+export function contentLength(header: string | null): number | null {
+  const value = header?.trim() ?? "";
+  if (!/^\d{1,12}$/.test(value)) return null;
+  const length = Number(value);
+  return Number.isSafeInteger(length) && length > 0 ? length : null;
+}
+
+export class AudioVerificationError extends Error {
+  constructor(
+    readonly status: 413 | 415 | 422,
+    message: string,
+  ) {
+    super(message);
+    this.name = "AudioVerificationError";
+  }
+}
+
+const AUDIO_HEADER_BYTES = 12;
+
+export interface AudioExpectation {
+  bytes: number;
+  sha256: string;
+  mime: string;
+}
+
+/**
+ * Streams an upload through a bounded, verifying transform.
+ *
+ * The body is hashed incrementally with node:crypto and never buffered whole, so
+ * memory stays flat regardless of track size. A size, digest or container
+ * mismatch errors the stream before R2 can commit it. The returned stream must be
+ * piped into a fixed-length stream so R2 receives an exact Content-Length.
+ */
+export function verifyAudioStream(
+  source: ReadableStream<Uint8Array>,
+  expected: AudioExpectation,
+): {
+  body: ReadableStream<Uint8Array>;
+  failure: () => AudioVerificationError | null;
+  received: () => number;
+} {
+  let failure: AudioVerificationError | null = null;
+  let received = 0;
+  let checkedSignature = false;
+  const head = new Uint8Array(AUDIO_HEADER_BYTES);
+  let headBytes = 0;
+  const hash = createHash("sha256");
+  const fail = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    error: AudioVerificationError,
+  ) => {
+    failure ??= error;
+    controller.error(error);
+  };
+  const checkSignature = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+  ) => {
+    if (checkedSignature || headBytes < AUDIO_HEADER_BYTES) return;
+    checkedSignature = true;
+    if (!audioSignature(head.buffer as ArrayBuffer, expected.mime))
+      fail(
+        controller,
+        new AudioVerificationError(415, "Unsupported audio file contents."),
+      );
+  };
+  const body = source.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        if (failure) return;
+        received += chunk.byteLength;
+        if (received > expected.bytes) {
+          fail(
+            controller,
+            new AudioVerificationError(
+              413,
+              "This file is larger than the size recorded for the import.",
+            ),
+          );
+          return;
+        }
+        if (headBytes < AUDIO_HEADER_BYTES) {
+          const take = Math.min(
+            AUDIO_HEADER_BYTES - headBytes,
+            chunk.byteLength,
+          );
+          head.set(chunk.subarray(0, take), headBytes);
+          headBytes += take;
+          checkSignature(controller);
+          if (failure) return;
+        }
+        hash.update(chunk);
+        controller.enqueue(chunk);
+      },
+      flush(controller) {
+        if (failure) return;
+        if (received !== expected.bytes) {
+          fail(
+            controller,
+            new AudioVerificationError(
+              422,
+              "The upload ended before the whole file arrived. Choose the original file again.",
+            ),
+          );
+          return;
+        }
+        if (hash.digest("hex") !== expected.sha256) {
+          fail(
+            controller,
+            new AudioVerificationError(
+              422,
+              "File integrity check failed. Choose the original file again.",
+            ),
+          );
+          return;
+        }
+        if (!checkedSignature) {
+          checkedSignature = true;
+          if (!audioSignature(head.buffer as ArrayBuffer, expected.mime))
+            fail(
+              controller,
+              new AudioVerificationError(
+                415,
+                "Unsupported audio file contents.",
+              ),
+            );
+        }
+      },
+    }),
+  );
+  return { body, failure: () => failure, received: () => received };
+}
+
+/**
+ * A fixed-length transform is what lets R2 record the exact object length while
+ * the Worker streams the body. The polyfill in the Node test setup mirrors the
+ * Workers runtime behaviour closely enough for the verification tests.
+ */
+export function fixedLengthStream(
+  length: number,
+): TransformStream<Uint8Array, Uint8Array> {
+  return new FixedLengthStream(length) as unknown as TransformStream<
+    Uint8Array,
+    Uint8Array
+  >;
 }

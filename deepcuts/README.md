@@ -48,17 +48,25 @@ metadata are committed.
 - One album per import: MP3, AAC/M4A and FLAC; browser metadata and embedded
   JPEG/PNG extraction; fallback fields and optional cover/folder image.
 - File selection and an album-folder picker on browsers supporting directory input.
-- Sequential original uploads to private R2, SHA-256 verification, immutable object
-  writes, and staged D1 metadata. Partial imports stay out of the library.
+- Sequential original uploads to private R2, streaming SHA-256 and container
+  verification, immutable object writes, and staged D1 metadata. Partial imports
+  stay out of the library. Tracks up to 64 MiB with flat Worker memory.
+- Playlists across albums: create, rename, delete, add, remove and reorder, with a
+  mobile-first editor, an "add to playlist" action on every track, a library-wide
+  track picker, play, shuffle and append-to-queue. Playlists reference existing
+  track ids only, so music is never copied and removing a track never deletes it.
 - Authenticated original-byte streaming, single HTTP byte ranges, suffix/open
   ranges, HEAD and If-Range. No transcoding or public/signed media URLs.
 - Persistent audio element, seek, next/previous, add/remove/select queue items,
   local position/queue restoration, Media Session actions and metadata.
 - Download an album and its art into IndexedDB, verify each original, report
   device storage, request persistence, verify again or remove a local album.
-- Offline shell launch and album playback with **no API requests** and no server
-  session dependency. Sign out clears the collection and listening state on this
-  device. Offline sign-out queues server revocation for the next online launch.
+- Download a playlist without duplicating audio shared with downloaded albums;
+  removing either collection keeps files the other still needs.
+- Offline shell launch and album or playlist playback with **no API requests** and
+  no server session dependency, including after a cold PWA reload. Sign out clears
+  the collection and listening state on this device. Offline sign-out queues server
+  revocation for the next online launch.
 - Dedicated local/preview/production Worker configs; isolated validation and
   manually gated preview CI. No production deployment job.
 
@@ -78,14 +86,14 @@ capture/trace tooling against a personal library and upload the results to CI.
 ## Structure
 
 ```text
-src/client/         React shell, importer, player, IndexedDB downloads
-src/worker/         Hono API, owner sessions, validation and streaming
-src/shared/         library types, SHA-256, single-range parsing
-migrations/        additive D1 foundation, including future playlist tables
+src/client/         React shell, importer, player, playlist UI, IndexedDB downloads
+src/worker/         Hono API, owner sessions, streaming upload verification
+src/shared/         library and playlist types, SHA-256, ranges, shuffle helpers
+migrations/        additive D1 foundation (0001) and playlist indexes (0002)
 public/            manifest, original vector app mark, robots policy
 scripts/           local setup, generated fixtures, PWA build, preview guards
-tests/unit/        range, validation, SQLite-backed API and session tests
-tests/browser/     real-browser import/playback/download/offline integration
+tests/unit/        range, upload, playlist, offline-helper and SQLite API tests
+tests/browser/     real-browser import/playback/playlist/download/offline tests
 wrangler*.json     independent environment identities and resource bindings
 docs/              decisions, deployment procedure, milestone handoff
 ```

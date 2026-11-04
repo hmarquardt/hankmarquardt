@@ -12,17 +12,26 @@ import {
 } from "./auth";
 import {
   artworkMime,
-  audioSignature,
   boundedBody,
+  contentLength,
+  fixedLengthStream,
   importSchema,
   jsonBody,
+  playlistCreateSchema,
+  playlistOrderSchema,
+  playlistRenameSchema,
+  playlistTrackSchema,
   stateSchema,
+  verifyAudioStream,
 } from "./validation";
 import {
   MAX_ART_BYTES,
   MAX_AUDIO_BYTES,
-  sha256,
+  MAX_PLAYLISTS,
+  MAX_PLAYLIST_TRACKS,
   type Album,
+  type Playlist,
+  type PlaylistSummary,
   type Track,
 } from "../shared/model";
 import { byteRange } from "../shared/range";
@@ -173,28 +182,98 @@ app.put("/api/imports/:id/tracks/:track", async (c) => {
     .first<Track & { object_key: string }>();
   if (!row)
     throw new HTTPException(404, { message: "Open import track not found." });
-  const bytes = await boundedBody(c.req.raw, MAX_AUDIO_BYTES);
-  if (bytes.byteLength !== row.bytes || (await sha256(bytes)) !== row.sha256) {
+  // R2 needs an exact object length, so a declared Content-Length is required.
+  // The browser always sends one for a File body.
+  const declared = contentLength(c.req.header("Content-Length") ?? null);
+  if (declared === null)
+    throw new HTTPException(411, {
+      message: "Send the whole original file with a Content-Length header.",
+    });
+  if (declared > MAX_AUDIO_BYTES)
+    throw new HTTPException(413, {
+      message: `Tracks are limited to ${Math.floor(MAX_AUDIO_BYTES / 1024 ** 2)} MiB each.`,
+    });
+  if (declared !== row.bytes)
     throw new HTTPException(422, {
-      message: "File integrity check failed. Choose the original file again.",
+      message:
+        "File size does not match this import. Choose the original file again.",
     });
-  }
-  if (!audioSignature(bytes, row.mime))
-    throw new HTTPException(415, {
-      message: "Unsupported audio file contents.",
-    });
-  // Never replace an original, including on retries or concurrent uploads.
-  const written = await c.env.MUSIC.put(row.object_key, bytes, {
-    onlyIf: { etagDoesNotMatch: "*" },
-    httpMetadata: { contentType: row.mime },
-    customMetadata: { sha256: row.sha256 },
+  if (!c.req.raw.body)
+    throw new HTTPException(400, { message: "A request body is required." });
+  // The body streams straight into R2 through a verifying transform. It is never
+  // buffered whole, so a 64 MiB original cannot exhaust Worker memory. The
+  // transform hashes incrementally and errors the stream before R2 commits when
+  // the digest, length or audio container does not match.
+  const verified = verifyAudioStream(c.req.raw.body, {
+    bytes: row.bytes,
+    sha256: row.sha256,
+    mime: row.mime,
   });
-  if (!written) {
-    const existing = await c.env.MUSIC.head(row.object_key);
+  const markUploaded = () =>
+    c.env.DB.prepare("UPDATE tracks SET uploaded=1 WHERE id=?")
+      .bind(row.id)
+      .run();
+  // A retry after a successful write never touches R2 again, but the retried body
+  // is still verified so a different file cannot be reported as imported.
+  const existing = await c.env.MUSIC.head(row.object_key);
+  if (existing) {
     if (
-      !existing ||
       existing.size !== row.bytes ||
       existing.customMetadata?.sha256 !== row.sha256
+    )
+      throw new HTTPException(409, {
+        message:
+          "The stored original does not match this import. It has not been overwritten.",
+      });
+    await verified.body.pipeTo(new WritableStream()).catch(() => undefined);
+    const rejected = verified.failure();
+    if (rejected)
+      throw new HTTPException(rejected.status, { message: rejected.message });
+    await markUploaded();
+    return c.json({ ok: true });
+  }
+  const fixed = fixedLengthStream(declared);
+  const pump = verified.body.pipeTo(fixed.writable).catch(() => undefined);
+  let written: R2Object | null = null;
+  try {
+    written = await c.env.MUSIC.put(row.object_key, fixed.readable, {
+      onlyIf: { etagDoesNotMatch: "*" },
+      httpMetadata: { contentType: row.mime },
+      customMetadata: { sha256: row.sha256 },
+    });
+  } catch {
+    await pump;
+    const rejected = verified.failure();
+    if (rejected)
+      throw new HTTPException(rejected.status, { message: rejected.message });
+    if (verified.received() < row.bytes)
+      throw new HTTPException(422, {
+        message:
+          "The upload was interrupted before the whole file arrived. Choose the original file again.",
+      });
+    throw new HTTPException(502, {
+      message: "The original could not be stored. Try again.",
+    });
+  }
+  if (written) {
+    await pump;
+    const rejected = verified.failure();
+    if (rejected)
+      throw new HTTPException(rejected.status, { message: rejected.message });
+    if (written.size !== row.bytes) {
+      await c.env.MUSIC.delete(row.object_key);
+      throw new HTTPException(422, {
+        message:
+          "The stored original was incomplete. Choose the original file again.",
+      });
+    }
+  } else {
+    // Lost a concurrent write race. Never replace an existing original.
+    const stored = await c.env.MUSIC.head(row.object_key);
+    if (
+      !stored ||
+      stored.size !== row.bytes ||
+      stored.customMetadata?.sha256 !== row.sha256
     ) {
       throw new HTTPException(409, {
         message:
@@ -202,9 +281,7 @@ app.put("/api/imports/:id/tracks/:track", async (c) => {
       });
     }
   }
-  await c.env.DB.prepare("UPDATE tracks SET uploaded=1 WHERE id=?")
-    .bind(row.id)
-    .run();
+  await markUploaded();
   return c.json({ ok: true });
 });
 app.put("/api/imports/:id/artwork", async (c) => {
@@ -323,16 +400,110 @@ app.get("/api/albums/:id/artwork", async (c) => {
     },
   });
 });
-app.get("/api/state", async (c) => {
-  const row = await c.env.DB.prepare(
-    "SELECT state_json FROM listening_state WHERE id=1",
-  ).first<{ state_json: string }>();
-  return c.json(
-    row
-      ? JSON.parse(row.state_json)
-      : { queue: [], current: null, position: 0 },
-  );
+
+app.patch("/api/playlists/:id", async (c) => {
+  const { title } = playlistRenameSchema.parse(await jsonBody(c.req.raw, 2048));
+  const result = await c.env.DB.prepare(
+    "UPDATE playlists SET title=? WHERE id=?",
+  )
+    .bind(title, c.req.param("id"))
+    .run();
+  if (!result.meta.changes)
+    throw new HTTPException(404, { message: "Playlist not found." });
+  return c.json({ ok: true, title });
 });
+app.delete("/api/playlists/:id", async (c) => {
+  const id = c.req.param("id");
+  // Explicit child removal keeps referential integrity independent of cascade
+  // configuration. Tracks, albums and R2 originals are never touched.
+  const [, parent] = await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM playlist_tracks WHERE playlist_id=?").bind(
+      id,
+    ),
+    c.env.DB.prepare("DELETE FROM playlists WHERE id=?").bind(id),
+  ]);
+  if (!parent.meta.changes)
+    throw new HTTPException(404, { message: "Playlist not found." });
+  return c.json({ ok: true });
+});
+app.post("/api/playlists/:id/tracks", async (c) => {
+  const id = c.req.param("id");
+  const { track_id } = playlistTrackSchema.parse(
+    await jsonBody(c.req.raw, 2048),
+  );
+  if (!(await findPlaylist(c.env.DB, id)))
+    throw new HTTPException(404, { message: "Playlist not found." });
+  const track = await c.env.DB.prepare(
+    `SELECT t.id FROM tracks t JOIN albums a ON a.id=t.album_id
+    JOIN imports i ON i.id=a.import_id WHERE t.id=? AND i.status='complete'`,
+  )
+    .bind(track_id)
+    .first<{ id: string }>();
+  if (!track)
+    throw new HTTPException(404, {
+      message: "That track is not in your library.",
+    });
+  const order = await currentOrder(c.env.DB, id);
+  if (order.includes(track_id))
+    throw new HTTPException(409, {
+      message: "That track is already in this playlist.",
+    });
+  if (order.length >= MAX_PLAYLIST_TRACKS)
+    throw new HTTPException(409, {
+      message: `A playlist holds up to ${MAX_PLAYLIST_TRACKS} tracks.`,
+    });
+  try {
+    // The position is computed in the same statement, so concurrent adds cannot
+    // reuse an index. The unique index is the final backstop.
+    await c.env.DB.prepare(
+      `INSERT INTO playlist_tracks(playlist_id,track_id,position)
+      VALUES(?,?,(SELECT coalesce(MAX(position)+1,0) FROM playlist_tracks WHERE playlist_id=?))`,
+    )
+      .bind(id, track_id, id)
+      .run();
+  } catch {
+    throw new HTTPException(409, {
+      message: "That track is already in this playlist.",
+    });
+  }
+  return c.json({ ok: true }, 201);
+});
+app.delete("/api/playlists/:id/tracks/:track", async (c) => {
+  const id = c.req.param("id");
+  if (!(await findPlaylist(c.env.DB, id)))
+    throw new HTTPException(404, { message: "Playlist not found." });
+  const result = await c.env.DB.prepare(
+    "DELETE FROM playlist_tracks WHERE playlist_id=? AND track_id=?",
+  )
+    .bind(id, c.req.param("track"))
+    .run();
+  if (!result.meta.changes)
+    throw new HTTPException(404, {
+      message: "That track is not in this playlist.",
+    });
+  await writePositions(c.env.DB, id, await currentOrder(c.env.DB, id));
+  return c.json({ ok: true });
+});
+app.put("/api/playlists/:id/tracks", async (c) => {
+  const id = c.req.param("id");
+  const { track_ids } = playlistOrderSchema.parse(await jsonBody(c.req.raw));
+  if (!(await findPlaylist(c.env.DB, id)))
+    throw new HTTPException(404, { message: "Playlist not found." });
+  const current = await currentOrder(c.env.DB, id);
+  const expected = new Set(current);
+  if (
+    current.length !== track_ids.length ||
+    !track_ids.every((trackId) => expected.has(trackId))
+  )
+    throw new HTTPException(409, {
+      message:
+        "This playlist changed while you were editing. Reload and try again.",
+    });
+  if (!current.every((trackId, index) => trackId === track_ids[index]))
+    await writePositions(c.env.DB, id, track_ids);
+  return c.json({ ok: true });
+});
+
 app.put("/api/state", async (c) => {
   const state = stateSchema.parse(await jsonBody(c.req.raw));
   await c.env.DB.prepare(
@@ -343,6 +514,119 @@ app.put("/api/state", async (c) => {
     .run();
   return c.json({ ok: true });
 });
+app.get("/api/state", async (c) => {
+  const row = await c.env.DB.prepare(
+    "SELECT state_json FROM listening_state WHERE id=1",
+  ).first<{ state_json: string }>();
+  return c.json(
+    row
+      ? JSON.parse(row.state_json)
+      : { queue: [], current: null, position: 0 },
+  );
+});
+
+const playlistColumns = `p.id,p.title,p.created_at,
+  (SELECT count(*) FROM playlist_tracks pt WHERE pt.playlist_id=p.id) AS track_count,
+  (SELECT coalesce(sum(t.duration),0) FROM playlist_tracks pt
+    JOIN tracks t ON t.id=pt.track_id WHERE pt.playlist_id=p.id) AS duration`;
+const trackColumns = `t.id,t.album_id,t.title,t.artist,t.track_number,t.disc_number,
+  t.duration,t.filename,t.mime,t.bytes,t.sha256`;
+
+function summary(row: PlaylistSummary): PlaylistSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    created_at: row.created_at,
+    track_count: Number(row.track_count),
+    duration: Number(row.duration),
+  };
+}
+async function findPlaylist(db: D1Database, id: string) {
+  return db
+    .prepare(`SELECT ${playlistColumns} FROM playlists p WHERE p.id=?`)
+    .bind(id)
+    .first<PlaylistSummary>();
+}
+async function playlistTracks(db: D1Database, id: string) {
+  const rows = await db
+    .prepare(
+      `SELECT ${trackColumns} FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id
+      JOIN albums a ON a.id=t.album_id JOIN imports i ON i.id=a.import_id
+      WHERE pt.playlist_id=? AND i.status='complete' ORDER BY pt.position`,
+    )
+    .bind(id)
+    .all<Track>();
+  return rows.results;
+}
+/**
+ * Rewrites positions to 0..n-1. The offset pass avoids colliding with the
+ * (playlist_id, position) primary key while statements run inside one batch.
+ */
+async function writePositions(db: D1Database, id: string, trackIds: string[]) {
+  await db.batch([
+    db
+      .prepare(
+        "UPDATE playlist_tracks SET position = position + 100000 WHERE playlist_id=?",
+      )
+      .bind(id),
+    ...trackIds.map((trackId, index) =>
+      db
+        .prepare(
+          "UPDATE playlist_tracks SET position=? WHERE playlist_id=? AND track_id=?",
+        )
+        .bind(index, id, trackId),
+    ),
+  ]);
+}
+async function currentOrder(db: D1Database, id: string) {
+  const rows = await db
+    .prepare(
+      "SELECT track_id FROM playlist_tracks WHERE playlist_id=? ORDER BY position",
+    )
+    .bind(id)
+    .all<{ track_id: string }>();
+  return rows.results.map((row) => row.track_id);
+}
+
+app.get("/api/playlists", async (c) => {
+  const rows = await c.env.DB.prepare(
+    `SELECT ${playlistColumns} FROM playlists p ORDER BY p.created_at, p.id`,
+  ).all<PlaylistSummary>();
+  return c.json({ playlists: rows.results.map(summary) });
+});
+app.post("/api/playlists", async (c) => {
+  const { title } = playlistCreateSchema.parse(await jsonBody(c.req.raw, 2048));
+  const count = await c.env.DB.prepare(
+    "SELECT count(*) AS total FROM playlists",
+  ).first<{ total: number }>();
+  if (Number(count?.total ?? 0) >= MAX_PLAYLISTS)
+    throw new HTTPException(409, {
+      message: `Keep up to ${MAX_PLAYLISTS} playlists.`,
+    });
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare("INSERT INTO playlists(id,title) VALUES(?,?)")
+    .bind(id, title)
+    .run();
+  const row = await findPlaylist(c.env.DB, id);
+  if (!row)
+    throw new HTTPException(500, {
+      message: "The playlist could not be created.",
+    });
+  return c.json({ playlist: summary(row) }, 201);
+});
+app.get("/api/playlists/:id", async (c) => {
+  const row = await findPlaylist(c.env.DB, c.req.param("id"));
+  if (!row) throw new HTTPException(404, { message: "Playlist not found." });
+  const tracks = await playlistTracks(c.env.DB, row.id);
+  const playlist: Playlist = {
+    ...summary(row),
+    track_count: tracks.length,
+    duration: tracks.reduce((total, track) => total + track.duration, 0),
+    tracks,
+  };
+  return c.json({ playlist });
+});
+
 app.all("/api/*", (c) => c.json({ error: "Endpoint not found." }, 404));
 app.all("*", async (c) => {
   if (!["GET", "HEAD"].includes(c.req.method))
